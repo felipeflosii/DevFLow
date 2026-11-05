@@ -1,57 +1,32 @@
-# Publicação pública do DevFlow CLI 0.2.0
+# Publicar DevFlow v0.3.0 no GitHub
 
-O projeto foi preparado para o endereço `https://github.com/felipeflosii/devflow-cli`, que **precisa existir e estar público** antes de qualquer instalação remota funcionar.
+O ZIP deste pacote é o **código-fonte completo**, não contém tokens nem a configuração pessoal de `dev init`.
 
-## Primeiro upload
-
-Na pasta extraída, contendo `pyproject.toml`:
+1. Descompacte o ZIP.
+2. Dentro do clone atual de `felipeflosii/devflow-cli`, copie o conteúdo da pasta `devflow-cli-v0.3.0/` por cima dos arquivos existentes. Preserve o diretório `.git/` do repositório (não sobrescreva nem apague).
+3. Execute os testes: `PYTHONPATH=src python3 -m unittest discover -s tests -v`.
+4. Confira as diferenças: `git status` e `git diff`.
+5. Publique:
 
 ```bash
-git init -b main
+git switch main
+git pull --ff-only origin main
 git add .
-git commit -m 'feat: adicionar instaladores Windows, macOS e Linux'
-gh auth login
-gh repo create felipeflosii/devflow-cli --public --source=. --remote=origin --push
+git commit -m 'release: DevFlow CLI v0.3.0'
+git push origin main
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
-Se já existe um repositório Git local, não repita `git init`. Se o GitHub já tiver um repositório vazio `devflow-cli`, use `git remote add origin https://github.com/felipeflosii/devflow-cli.git` e `git push -u origin main`, depois de verificar a branch.
+Caso a `main` esteja protegida, crie uma branch e abra uma Pull Request no GitHub antes de criar a tag.
 
-## Instalação dos desenvolvedores
-
-**macOS/Linux** (Terminal/zsh/Bash):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/felipeflosii/devflow-cli/main/install.sh | bash
-```
-
-**Windows** (PowerShell):
-
-```powershell
-irm https://raw.githubusercontent.com/felipeflosii/devflow-cli/main/install.ps1 | iex
-```
-
-Antes desses comandos, é necessário instalar Python 3.11+, Git e pipx. Veja instruções específicas no README. Para evitar executar código remoto sem revisão, faça download e leia o script antes.
-
-## Verificações depois de publicar
-
-- Repositório público acessível pelo navegador.
-- `install.sh` e `install.ps1` acessíveis por `raw.githubusercontent.com` sem erro 404.
-- GitHub Actions `Cross-platform tests` verde para Ubuntu, macOS e Windows.
-- Instalação em uma máquina de cada sistema, `dev --version` e `dev --help` funcionando.
-- Após `az login`, validar `dev doctor` e o ciclo `dev tasks` / `dev start` / `dev finish` com uma tarefa de teste no **Azure Repos**.
-
-## Atualizações
-
-Após cada commit publicado, quem tiver DevFlow pode atualizar via:
+Após publicar, cada desenvolvedor atualiza:
 
 ```bash
 pipx install --force git+https://github.com/felipeflosii/devflow-cli.git
+# alternativa: pipx upgrade devflow-ado, conforme a origem da instalação
 ```
 
-No Windows também é válido `py -m pipx install --force git+https://github.com/felipeflosii/devflow-cli.git`.
+O comando `dev init` **não precisa ser refeito** ao atualizar, pois a configuração v0.2.0 é compatível.
 
-## Recomendações de distribuição
-
-- Crie tags versionadas (`v0.2.0` etc.) e releases para que equipes possam fixar uma versão confiável.
-- O instalador padrão acompanha a `main` e, portanto, o conteúdo remoto pode mudar. Leia os scripts ou instale a partir de um commit/tag específico.
-- Não inclua tokens ou credenciais no repositório público.
+O GitHub deste projeto é apenas um distribuidor da CLI. `dev init` deve ser executado num **clone Azure Repos**.

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "devflow-ado"
-version = "0.2.0"
-description = "CLI de tarefas diarias Azure Boards + branches Git + Pull Requests Azure Repos"
+version = "0.3.0"
+description = "CLI para Azure Boards, Azure Repos e Git: tarefas, hierarquia, branches e PRs"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}

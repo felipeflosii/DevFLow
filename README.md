@@ -1,196 +1,135 @@
 # DevFlow CLI — Azure Boards + Azure Repos + Git
 
-**Versão 0.2.0 — Windows, macOS e Linux.** Ferramenta de linha de comando em Python 3.10+, sem dependências de runtime fora da biblioteca padrão. Instalação recomendada com `pipx` (recomenda-se Python 3.11+ para as versões atuais do pipx).
+**Versão 0.3.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
 
-O líder distribui Work Items no Azure Boards e agenda a data. Cada desenvolvedor consulta as tarefas atribuídas, inicia uma branch com o ID do Work Item, faz commits vinculados e abre uma Pull Request. **Este projeto suporta Azure Repos + Azure Boards, não repositórios hospedados no GitHub.** O GitHub deste projeto serve apenas para distribuir a CLI.
+O DevFlow permite consultar as Tasks do Azure Boards pelo terminal, iniciar branches associadas ao ID da Task e criar commits e Pull Requests rastreáveis no Azure Repos. **O GitHub hospeda o código deste programa; as integrações Git de trabalho são exclusivamente com Azure Repos.**
 
-> **Publicação pendente:** os exemplos abaixo apontam para `felipeflosii/devflow-cli`. Somente funcionarão **depois** que esse repositório for criado como público e receber estes arquivos.
+## Novidades da v0.3.0
 
-## Instalação rápida
+- `dev tasks` agora lista **todas as suas Tasks abertas**, mesmo sem data planejada. Não é necessário editar Due Date ou planejar tags para que apareçam.
+- `dev tasks --all` lista **todas as Tasks abertas do projeto**, inclusive de outros membros e sem responsável. Exibe coluna **Responsável** abreviada (ex.: `Luiz F.`) e **PBI** pai (`#5`).
+- `dev tasks --mine` equivale à listagem padrão, incluindo as tarefas sem data.
+- `dev tasks --today`, `--week` e `--date AAAA-MM-DD` são filtros opcionais de data, usando a tag `devday:AAAA-MM-DD` (mantida por compatibilidade).
+- `dev tasks --all --area 'Infraestrutura'` filtra por Area Path; `--closed` inclui finalizadas.
+- `dev pbi`, `dev features`, `dev epics` e `dev workitems --all` consultam o backlog por tipo.
+- `dev show <ID>` mostra dados do Work Item e sua hierarquia **Epic → Feature → PBI → Task**.
+- `dev start <ID>`, `dev save` e `dev finish` exigem **Task**; PBIs, Features e Epics não podem iniciar um fluxo de código.
 
-| Sistema | Pré-requisitos | Instalador |
-|---|---|---|
-| **Windows 10/11** | Python 3.11+, Git for Windows, pipx | `install.ps1` via PowerShell |
-| **macOS** (Intel/Apple Silicon) | Python 3.11+, Git, pipx | `install.sh` via Bash |
-| **Linux** (Zorin/Ubuntu) | Python 3.11+, Git, pipx | `install.sh` via Bash |
-
-### Windows — PowerShell 5.1 ou PowerShell 7+
-
-Instale [Python](https://www.python.org/downloads/windows/), [Git for Windows](https://git-scm.com/downloads/win) e [pipx](https://pipx.pypa.io/latest/how-to/install-pipx.html). Para instalar `pipx` quando o Python Launcher (`py`) estiver disponível:
-
-```powershell
-py -m pip install --user pipx
-py -m pipx ensurepath
-```
-
-**Abra um novo PowerShell** após configurar o PATH. Faça o download e revise o instalador:
-
-```powershell
-Invoke-WebRequest 'https://raw.githubusercontent.com/felipeflosii/devflow-cli/main/install.ps1' -OutFile install.ps1
-Get-Content .\install.ps1
-.\install.ps1
-```
-
-Caso a política de execução da sua máquina bloqueie o arquivo, uma alternativa temporária, **somente após verificar o script**, é:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-Para instalação em uma linha (menos segura, pois executa o conteúdo remoto sem revisão):
-
-```powershell
-irm https://raw.githubusercontent.com/felipeflosii/devflow-cli/main/install.ps1 | iex
-```
-
-O Windows PowerShell não precisa ter Bash ou WSL instalado. `irm` é o alias de `Invoke-RestMethod`, preferível a `curl` dentro do PowerShell.
-
-### macOS — Terminal (zsh)
-
-Pré-requisitos usando [Homebrew](https://brew.sh/):
-
-```bash
-brew install python git pipx
-pipx ensurepath
-```
-
-Inspecione e execute:
-
-```bash
-curl -fsSLo devflow-install.sh https://raw.githubusercontent.com/felipeflosii/devflow-cli/main/install.sh
-cat devflow-install.sh
-bash devflow-install.sh
-```
-
-Ou instale diretamente:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/felipeflosii/devflow-cli/main/install.sh | bash
-```
-
-Funciona em macOS Intel e Apple Silicon, usando o Python/Git/pipx da própria máquina. Não é necessário compilar um executável específico.
-
-### Linux — Zorin OS / Ubuntu
-
-```bash
-sudo apt update
-sudo apt install -y python3 git pipx
-pipx ensurepath
-curl -fsSL https://raw.githubusercontent.com/felipeflosii/devflow-cli/main/install.sh | bash
-```
-
-Se a distro tiver Python 3.10, o pacote DevFlow pode funcionar, mas as versões atuais do pipx recomendam Python 3.11+; nesse caso, instale uma versão mais recente de Python ou use uma versão de pipx compatível.
-
-### Sem instalador remoto, em qualquer sistema
-
-Depois de instalar Git e pipx, use o pacote diretamente do repositório público:
+Exemplo de `dev tasks --all` (ilustrativo; dados reais vêm do Azure DevOps):
 
 ```text
-pipx install git+https://github.com/felipeflosii/devflow-cli.git
+Todas as Tasks abertas do projeto
+=================================
+ID  Estado       Planejada  Responsável    PBI  Título
+--  -----------  ---------  -------------  ---  ----------------------------------------
+6   To Do        sem data   Luiz F.        #5   Criar script de provisionamento da IA
+7   In Progress  sem data   Maria S.       #5   Criar script de provisionamento do .NET
+8   To Do        sem data   Não atribuído  #5   Validar provisionamento dos App Services
+
+Total: 3 Task(s). Use: dev start <ID> | dev show <ID>
 ```
 
-Atualização:
+## Instalação e atualização
 
-```text
+Requer **Python 3.10+**, Git, `pipx` (recomendado) e, para autenticação no Azure Boards, Azure CLI (`az login`) **ou** um PAT via variável de ambiente. A autenticação do Git (SSH/Git Credential Manager) é independente.
+
+**Linux/macOS (instalação local a partir do ZIP):**
+
+```bash
+unzip devflow-cli-v0.3.0.zip
+cd devflow-cli-v0.3.0
+pipx install --force .
+dev --version
+```
+
+**Windows / PowerShell (dentro da pasta descompactada):**
+
+```powershell
+py -m pipx install --force .
+dev --version
+```
+
+**Depois de publicar no GitHub** `felipeflosii/devflow-cli`:
+
+```bash
 pipx install --force git+https://github.com/felipeflosii/devflow-cli.git
 ```
 
-Desinstalação:
+Os scripts `install.sh` e `install.ps1` fazem essa instalação a partir do GitHub (eles dependem de a versão v0.3.0 já estar publicada). Instalam na conta do usuário, sem `sudo`.
 
-```text
-pipx uninstall devflow-ado
-```
+## Primeira configuração
 
-Em Windows com `pipx` instalado como módulo, troque `pipx` por `py -m pipx`.
-
-## Configuração inicial (cada desenvolvedor)
-
-1. Instale o [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) ou configure um PAT com permissão de acesso ao Azure DevOps.
-2. Execute `az login` e autentique no tenant certo. Se não possuir assinatura Azure, pode tentar `az login --allow-no-subscriptions`.
-3. Clone o repositório **hospedado no Azure Repos**, com credenciais Git configuradas por SSH ou Git Credential Manager.
-4. Dentro da pasta clonada, rode os comandos abaixo (iguais nos três sistemas):
+Execute a CLI **dentro de um repositório clonado do Azure Repos**, por exemplo `zeroviagem-api-java`:
 
 ```bash
-dev --version
-dev init
-dev doctor
-dev tasks --all
+az login                            # ou configure ADO_PAT sem armazená-lo no repo
+dev init                            # detecta org, projeto e repo a partir do remote origin
+dev doctor                          # verifica Git, autenticação e APIs
+dev tasks                           # suas Tasks abertas, com ou sem data
+dev tasks --all                     # todas as Tasks do projeto
 ```
 
-`dev init` detecta organização, projeto e repositório quando o remote utiliza `https://dev.azure.com/ORG/PROJ/_git/REPO` ou `git@ssh.dev.azure.com:v3/ORG/PROJ/REPO`. É possível preencher explicitamente:
+Se a detecção automática falhar:
 
 ```bash
-dev init --org MinhaOrg --project 'Meu Projeto' --repo MinhaAPI --base main --remote origin
+dev init --org VetSync --project 'GS2 - Azure DevOps' --repo zeroviagem-api-java
 ```
 
-A API do Azure DevOps usa automaticamente a sessão `az login` ou a variável de ambiente `ADO_PAT`. **Não coloque PAT em código nem em arquivos versionados**. A autenticação do Git para `git fetch/push` deve ser configurada separadamente.
+A configuração fica em `~/.config/devflow/config.json` no Linux/macOS (ou `$XDG_CONFIG_HOME/devflow/config.json`); no Windows, em `%LOCALAPPDATA%\DevFlow\config.json`. O programa **não salva tokens**.
 
-Variável de sessão em **PowerShell** (exemplo de formato; não compartilhe o token):
+## Referência de comandos
+
+| Comando | Resultado |
+|---|---|
+| `dev tasks` | Suas Tasks abertas, incluindo sem data |
+| `dev tasks --mine` | Mesmo resultado de `dev tasks` |
+| `dev tasks --all` | Todas as Tasks abertas do projeto (coluna Responsável) |
+| `dev tasks --today` | Suas Tasks planejadas para hoje e atrasadas |
+| `dev tasks --week` | Suas Tasks planejadas até domingo e atrasadas |
+| `dev tasks --date 2026-11-10` | Suas Tasks planejadas para uma data exata |
+| `dev tasks --all --closed` | Todas as Tasks, incluindo concluídas |
+| `dev tasks --all --area 'Infraestrutura'` | Tasks abertas na área informada |
+| `dev pbi`, `dev features`, `dev epics` | Backlogs específicos |
+| `dev workitems --all` | Tasks, PBIs, Features, Epics, Bugs e Issues |
+| `dev show 8` | Detalhes e hierarquia do Work Item #8 |
+| `dev dashboard` | Menu de suas Tasks abertas |
+| `dev start 8` | Inicia/retoma branch para uma Task atribuída a você |
+| `dev current`, `dev status` | Consulta trabalho e PR da branch atual |
+| `dev save 'Implementar endpoint'` | Commit + push com `AB#ID` |
+| `dev finish` | Push e cria PR no Azure Repos, sem merge |
+| `dev sync` | `git fetch --prune` sem mudar sua branch |
+| `dev new 'Implementar JWT' --assign email@exemplo.com` | Cria Task |
+| `dev plan 8 --date 2026-11-10` | Atribui `devday:2026-11-10` |
+| `dev assign 8 email@exemplo.com` | Altera responsável |
+
+Use `--json` com os comandos de listagem para obter os objetos originais da API Azure DevOps. O campo **PBI** da visualização tabular é resolvido a partir dos relacionamentos de hierarquia do Work Item (não de seu título). Caso não exista um PBI pai ou não haja permissão para consultá-lo, aparece `—`.
+
+**Observação sobre datas:** `Iteration Path` define uma Sprint; isso não equivale a prazo de cada Task. O filtro de data do DevFlow v0.3.0 usa a tag `devday:`; o padrão **não filtra por data**. O campo opcional `Due Date`, se criado no processo do Azure DevOps, não é requisito para listar Tasks.
+
+## Segurança e limitações
+
+- `dev start` exige uma Task **atribuída ao usuário autenticado**. `--all` pode visualizar Tasks alheias, mas não dá permissão para iniciá-las.
+- Os comandos Git não fazem merge, rebase, `reset --hard` nem `push --force`. `dev finish` cria a PR mas **não a aprova** nem conclui a Task.
+- Ao iniciar outra branch, exige árvore de trabalho limpa. Para `dev save`, solicita confirmação antes de `git add -A`, exceto com `--yes`.
+- Bloqueia padrões comuns de arquivos sensíveis (`.env`, `.key`, `.pem`, etc.). Isso não substitui revisão manual nem scanner de segredos.
+- O suporte a estados personalizados do Azure Boards é baseado em nomes conhecidos de estados concluídos; valide adaptações específicas do seu processo.
+- Work Items do projeto são consultados em lotes (até 200 por pedido), com limite padrão da consulta WIQL de até 1.000 IDs por execução.
+- A integração real com sua organização Azure DevOps depende da conectividade e das permissões do seu usuário.
+
+## Testes e contribuição
+
+Na raiz do repositório:
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+```
+
+No PowerShell:
 
 ```powershell
-$env:ADO_PAT = Read-Host 'Cole seu PAT do Azure DevOps'
+$env:PYTHONPATH='src'; py -m unittest discover -s tests -v
 ```
 
-Em **Bash/zsh**:
+Todos os testes são locais, sem chamadas reais ao Azure DevOps. Consulte [`CHANGELOG.md`](CHANGELOG.md) para histórico e [`docs/PUBLICAR_NO_GITHUB.md`](docs/PUBLICAR_NO_GITHUB.md) para publicação.
 
-```bash
-read -rs ADO_PAT && export ADO_PAT && echo
-```
-
-## Fluxo de trabalho
-
-Líder, à noite (o comando funciona em Windows, macOS e Linux):
-
-```bash
-dev new 'Implementar JWT' --assign pessoa@exemplo.com --date 2026-11-06
-dev new 'Corrigir tela de login' --type Bug --assign dev2@exemplo.com --date 2026-11-06
-# Tarefas já existentes:
-dev assign 142 dev@exemplo.com
-dev plan 142 --date 2026-11-06
-```
-
-Desenvolvedor, no dia seguinte:
-
-```bash
-dev tasks                      # Hoje e atrasadas
-dev tasks --week               # Semana
-dev tasks --all                # Todas as minhas tarefas abertas
-dev dashboard                  # Escolher pelo numero no terminal
-dev start 142                  # Cria e publica feature/142-titulo
-dev current                    # Tarefa da branch atual
-dev status                     # Status do Git e PR atual
-dev save 'Adicionar JWT'       # Commit com AB#142 + push
-dev finish                     # Push + PR vinculada ao Boards
-dev sync                       # Apenas git fetch --prune
-```
-
-A agenda diária utiliza uma tag **`devday:AAAA-MM-DD`** nos Work Items. É possível cadastrá-la diretamente pelo Azure Boards ou usar `dev plan`. Tarefas sem essa tag aparecem em `dev tasks --all`. `dev start` exige que o Work Item esteja atribuído à conta autenticada.
-
-## Segurança e restrições
-
-- **Não realiza merge**, rebase, `reset --hard` ou `push --force`; políticas de revisão da `main` permanecem ativas.
-- Recusa troca de branch com arquivos locais modificados; retoma branches existentes.
-- Antes de commitar todos os arquivos pendentes (`git add -A`), solicita confirmação (a menos que use `--yes`).
-- Bloqueia alguns nomes comuns de segredos (`.env`, `.pem`, `.key` etc.), mas isto **não substitui** revisão, `.gitignore` ou varredura de segredos.
-- Quando o servidor recusa a associação de branch/PR ao Work Item, informa aviso; operações Git já realizadas não são desfeitas.
-- Mantém apenas dados de configuração locais; não grava PAT ou token. As permissões de arquivo no Windows são as da conta do usuário.
-- O `dev finish` **não encerra automaticamente a Task** no Azure Boards.
-
-A configuração fica em:
-
-| Sistema | Caminho |
-|---|---|
-| Windows | `%LOCALAPPDATA%\DevFlow\config.json` |
-| macOS e Linux | `~/.config/devflow/config.json` (ou `$XDG_CONFIG_HOME/devflow/config.json`) |
-
-## Testes e publicação
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-Para executar os testes do código-fonte sem instalar (Bash/zsh): `PYTHONPATH=src python3 -m unittest discover -s tests -v`. No PowerShell: `$env:PYTHONPATH='src'; py -m unittest discover -s tests -v`.
-
-O workflow `.github/workflows/tests.yml` configura **Windows, macOS e Ubuntu**, com Python 3.11 e 3.13, testes offline e verificação do CLI e da sintaxe dos instaladores. Ele só executará após a publicação no GitHub. A integração real com uma organização Azure DevOps ainda deve ser validada com uma Task de teste e `dev doctor` em cada plataforma.
-
-Veja [docs/PUBLICAR_NO_GITHUB.md](docs/PUBLICAR_NO_GITHUB.md) para instruções de publicação, URLs e verificação. MIT License. **Projeto independente, não oficial da Microsoft.**
+**Licença MIT — Projeto independente, não oficial da Microsoft.**

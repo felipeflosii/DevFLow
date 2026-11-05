@@ -1,57 +1,61 @@
 import unittest
 from unittest.mock import patch
-from datetime import date
 from devflow.ado import AzureDevOps
 
 
 class AdoTests(unittest.TestCase):
+    def setUp(self):
+        self.ado = AzureDevOps("VetSync", "GS2 - Azure DevOps", "zeroviagem-api-java")
+
+    def test_query_all_has_no_assignedto_constraint(self):
+        params = {}
+        def request(method, path, **kw):
+            params.update(kw)
+            return {"workItems": [{"id": 6}, {"id": 7}, {"id": 8}]}
+        with patch.object(self.ado, "request", side_effect=request):
+            ids = self.ado.query_ids(item_types={"Task"}, mine=False)
+        self.assertEqual(ids, [6, 7, 8])
+        self.assertIn("[System.WorkItemType] IN ('Task')", params["body"]["query"])
+        self.assertNotIn("[System.AssignedTo]", params["body"]["query"])
+        self.assertIn("[System.TeamProject]", params["body"]["query"])
+
+    def test_query_mine_uses_macro(self):
+        params = {}
+        def request(method, path, **kw):
+            params.update(kw)
+            return {"workItems": []}
+        with patch.object(self.ado, "request", side_effect=request):
+            self.ado.query_ids(item_types={"Task"}, mine=True)
+        self.assertIn("[System.AssignedTo] = @Me", params["body"]["query"])
+
+    def test_workitem_batch_requests_relations_and_chunks(self):
+        calls = []
+        def request(method, path, **kw):
+            calls.append((method, path, kw))
+            return {"value": [{"id": x, "fields": {}} for x in kw["body"]["ids"]]}
+        with patch.object(self.ado, "request", side_effect=request):
+            results = self.ado.get_items(list(range(1, 221)), relations=True)
+        self.assertEqual(len(results), 220)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][2]["body"]["$expand"], "Relations")
+        self.assertEqual(len(calls[0][2]["body"]["ids"]), 200)
+        self.assertEqual(len(calls[1][2]["body"]["ids"]), 20)
+
+    def test_workitems_empty_does_not_call_api(self):
+        with patch.object(self.ado, "request") as fake:
+            self.assertEqual(self.ado.get_items([]), [])
+            fake.assert_not_called()
+
+    def test_assigned_ids_escapes_user(self):
+        params = {}
+        def request(method, path, **kw):
+            params.update(kw)
+            return {"workItems": [{"id": 6}]}
+        with patch.object(self.ado, "identity", return_value={"uniqueName": "a'b@example.com"}), \
+                patch.object(self.ado, "request", side_effect=request):
+            self.assertEqual(self.ado.assigned_ids(), [6])
+        self.assertIn("a''b@example.com", params["body"]["query"])
+
     def test_pr_url(self):
-        ado = AzureDevOps("org", "Projeto Legal", "api")
-        self.assertEqual(ado.pr_web_url(8),
-                         "https://dev.azure.com/org/Projeto%20Legal/_git/api/pullrequest/8")
-
-    def test_wiql_user_literal(self):
-        ado = AzureDevOps("org", "projeto", "api")
-        observed = {}
-        def fake_req(method, path, **kwargs):
-            observed.update({"method": method, "path": path, **kwargs})
-            return {"workItems": [{"id": 142}, {"id": 143}]}
-        with patch.object(ado, "identity", return_value={"uniqueName": "a'b@example.com"}), \
-                patch.object(ado, "request", side_effect=fake_req):
-            self.assertEqual(ado.assigned_ids(), [142, 143])
-        self.assertIn("a''b@example.com", observed["body"]["query"])
-
-    def test_plan_preserves_tags(self):
-        ado = AzureDevOps("org", "project", "repo")
-        with patch.object(ado, "get_item", return_value={"fields": {"System.Tags": "backend"}}), \
-                patch.object(ado, "update_field", return_value={"id": 5}) as update:
-            ado.plan_item(5, date(2026, 11, 6))
-            update.assert_called_once_with(5, "System.Tags", "backend; devday:2026-11-06")
-
-    def test_branch_artifact_uri_encoding(self):
-        ado = AzureDevOps("org", "proj", "repo")
-        request_args = {}
-        def fake_patch(item_id, changes):
-            request_args["changes"] = changes
-            return {"id": item_id}
-        with patch.object(ado, "project_id", return_value="project-guid"), \
-                patch.object(ado, "repo_id", return_value="repo-guid"), \
-                patch.object(ado, "get_item", return_value={"relations": []}), \
-                patch.object(ado, "patch_item", side_effect=fake_patch):
-            self.assertTrue(ado.add_artifact_link(142, "Branch", "feature/142-login"))
-        url = request_args["changes"][0]["value"]["url"]
-        self.assertEqual(url, "vstfs:///Git/Ref/project-guid%2Frepo-guid%2FGBfeature%2F142-login")
-
-    def test_branch_link_idempotent(self):
-        ado = AzureDevOps("org", "proj", "repo")
-        uri = "vstfs:///Git/Ref/project-guid%2Frepo-guid%2FGBfeature%2F142-login"
-        with patch.object(ado, "project_id", return_value="project-guid"), \
-                patch.object(ado, "repo_id", return_value="repo-guid"), \
-                patch.object(ado, "get_item", return_value={"relations": [{"url": uri}]}), \
-                patch.object(ado, "patch_item") as patcher:
-            self.assertFalse(ado.add_artifact_link(142, "Branch", "feature/142-login"))
-            patcher.assert_not_called()
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertEqual(self.ado.pr_web_url(8),
+                         "https://dev.azure.com/VetSync/GS2%20-%20Azure%20DevOps/_git/zeroviagem-api-java/pullrequest/8")

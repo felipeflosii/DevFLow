@@ -1,4 +1,4 @@
-"""Git chamado sem shell: nenhum comando destrutivo implicito."""
+"""Git chamado sem shell: nenhum comando destrutivo implícito."""
 from __future__ import annotations
 
 import shutil
@@ -17,10 +17,10 @@ def git(*args: str, cwd: Path | None = None, capture: bool = True) -> str:
             capture_output=capture, check=False,
         )
     except FileNotFoundError as exc:
-        raise DevError("Git nao encontrado no PATH. Instale o Git para seu sistema e reabra o terminal.") from exc
+        raise DevError("Git não encontrado no PATH. Instale o Git para seu sistema e reabra o terminal.") from exc
     if result.returncode != 0:
         details = (result.stderr or result.stdout or "").strip() if capture else ""
-        raise DevError(f"git {' '.join(args)} falhou: {details or 'verifique a saida acima'}")
+        raise DevError(f"git {' '.join(args)} falhou: {details or 'verifique a saída acima'}")
     return result.stdout.strip() if capture else ""
 
 
@@ -34,7 +34,7 @@ def branch() -> str:
 
 def require_clean() -> None:
     if git("status", "--porcelain"):
-        raise DevError("Ha alteracoes locais. Faca commit ou stash antes de trocar de branch (nenhum arquivo foi alterado).")
+        raise DevError("Há alterações locais. Faça commit ou stash antes de trocar de branch (nenhum arquivo foi alterado).")
 
 
 def ref_exists(ref: str) -> bool:
@@ -52,11 +52,11 @@ def sync(remote: str) -> None:
 
 def ensure_base(remote: str, base: str) -> None:
     if not ref_exists(f"refs/remotes/{remote}/{base}"):
-        raise DevError(f"Nao encontrei {remote}/{base}. Verifique branch principal e permissao ao repositorio.")
+        raise DevError(f"Não encontrei {remote}/{base}. Verifique branch principal e permissão ao repositório.")
 
 
 def switch_task(remote: str, base: str, target_branch: str) -> str:
-    """Cria ou retoma branch sem modificar a main local. Retorna a acao."""
+    """Cria ou retoma branch sem modificar a main local. Retorna a ação."""
     require_clean()
     sync(remote)
     ensure_base(remote, base)
@@ -69,7 +69,6 @@ def switch_task(remote: str, base: str, target_branch: str) -> str:
     else:
         git("switch", "-c", target_branch, f"{remote}/{base}", capture=False)
         action = "criada"
-    # Publica a branch se for nova ou local sem upstream. Falha de push nao apaga nada.
     if action == "criada" or not ref_exists(f"refs/remotes/{remote}/{target_branch}"):
         git("push", "-u", remote, target_branch, capture=False)
     return action
@@ -94,16 +93,15 @@ def commit_and_push(remote: str, work_id: int, message: str, *, yes: bool = Fals
         if not yes:
             confirm = input("Adicionar TODOS os arquivos acima e criar commit? [s/N] ").lower().strip()
             if confirm not in {"s", "sim", "y", "yes"}:
-                raise DevError("Commit cancelado pelo usuario.")
+                raise DevError("Commit cancelado pelo usuário.")
         git("add", "-A")
         secrets = potential_secret_paths()
         if secrets:
-            # Garante que os arquivos previamente staged nao serao commitados acidentalmente.
-            raise DevError("Possiveis segredos detectados nos arquivos staged: " + ", ".join(secrets)
+            raise DevError("Possíveis segredos detectados nos arquivos staged: " + ", ".join(secrets)
                            + ". Revise e retire-os do stage com git restore --staged <arquivo>.")
     staged = subprocess.run(["git", "diff", "--cached", "--quiet"], capture_output=True)
     if staged.returncode not in (0, 1):
-        raise DevError("Nao foi possivel examinar o index do Git.")
+        raise DevError("Não foi possível examinar o index do Git.")
     created = staged.returncode == 1
     if created:
         msg = message.strip()

@@ -22,7 +22,6 @@ def get_auth_headers() -> dict[str, str]:
         basic = base64.b64encode((":" + pat).encode()).decode()
         return {"Authorization": f"Basic {basic}"}
     try:
-        # No Windows, o Azure CLI pode ser disponibilizado como az.cmd.
         executable = shutil.which("az")
         if not executable:
             raise FileNotFoundError("az")
@@ -32,9 +31,9 @@ def get_auth_headers() -> dict[str, str]:
             capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
         )
     except FileNotFoundError as exc:
-        raise DevError("Autenticacao ausente: instale Azure CLI e execute 'az login', ou defina ADO_PAT.") from exc
+        raise DevError("Autenticação ausente: instale Azure CLI e execute 'az login', ou defina ADO_PAT.") from exc
     if process.returncode or not process.stdout.strip():
-        raise DevError("Nao foi possivel obter token Azure DevOps. Execute 'az login' com o tenant correto "
+        raise DevError("Não foi possível obter token Azure DevOps. Execute 'az login' com o tenant correto "
                        "ou defina ADO_PAT. Detalhes: " + process.stderr.strip()[:350])
     return {"Authorization": "Bearer " + process.stdout.strip()}
 
@@ -58,7 +57,7 @@ class AzureDevOps:
         url = root + "/" + api_path.lstrip("/") + "?" + urllib.parse.urlencode(values)
         if self._headers is None:
             self._headers = get_auth_headers()
-        headers = {**self._headers, "Accept": "application/json", "User-Agent": "DevFlow/0.1"}
+        headers = {**self._headers, "Accept": "application/json", "User-Agent": "DevFlow/0.3.0"}
         data = None
         if body is not None:
             data = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -71,19 +70,19 @@ class AzureDevOps:
         except urllib.error.HTTPError as exc:
             content = exc.read().decode("utf-8", errors="replace")[:1200]
             try:
-                data = json.loads(content)
-                detail = data.get("message") or data.get("Message") or content
+                payload = json.loads(content)
+                detail = payload.get("message") or payload.get("Message") or content
             except ValueError:
                 detail = content
             raise DevError(f"Azure DevOps HTTP {exc.code} em {method} {api_path}: {detail}") from exc
         except (urllib.error.URLError, TimeoutError) as exc:
-            raise DevError(f"Sem conexao com Azure DevOps: {exc}") from exc
+            raise DevError(f"Sem conexão com Azure DevOps: {exc}") from exc
 
     def identity(self) -> dict:
         result = self.request("GET", "_apis/connectionData", project=False, version="7.1-preview.1")
         user = result.get("authenticatedUser") or {}
         if not user:
-            raise DevError("Azure DevOps nao retornou o usuario autenticado.")
+            raise DevError("Azure DevOps não retornou o usuário autenticado.")
         return user
 
     def project_id(self) -> str:
@@ -103,11 +102,46 @@ class AzureDevOps:
         params = {"$expand": "relations"} if relations else None
         return self.request("GET", f"_apis/wit/workitems/{item_id}", params=params)
 
+    def get_items(self, ids: list[int], *, relations: bool = False) -> list[dict]:
+        """Recupera Work Items em lotes de até 200 com opção de incluir vínculos pai/filho."""
+        result: list[dict] = []
+        unique_ids = list(dict.fromkeys(int(x) for x in ids))
+        for offset in range(0, len(unique_ids), 200):
+            body: dict[str, Any] = {"ids": unique_ids[offset:offset + 200], "errorPolicy": "Omit"}
+            if relations:
+                body["$expand"] = "Relations"
+            response = self.request("POST", "_apis/wit/workitemsbatch", body=body)
+            result.extend(response.get("value", []))
+        return result
+
+    def query_ids(self, *, item_types: set[str] | None = None, mine: bool = False,
+                  include_closed: bool = False) -> list[int]:
+        """Consulta o backlog do projeto; --all não impõe filtro de responsável."""
+        safe_project = self.project.replace("'", "''")
+        conditions = [f"[System.TeamProject] = '{safe_project}'"]
+        if item_types:
+            safe_types = sorted(item_types)
+            values = ", ".join("'" + name.replace("'", "''") + "'" for name in safe_types)
+            conditions.append(f"[System.WorkItemType] IN ({values})")
+        if mine:
+            # A macro @Me é interpretada pela WIQL como o usuário autenticado.
+            conditions.append("[System.AssignedTo] = @Me")
+        if not include_closed:
+            # Filtro adicional de estados no lado cliente para estados customizados.
+            closed = ["Done", "Closed", "Resolved", "Removed", "Completed", "Cut"]
+            values = ", ".join(f"'{s}'" for s in closed)
+            conditions.append(f"[System.State] NOT IN ({values})")
+        wiql = ("SELECT [System.Id] FROM WorkItems WHERE " + " AND ".join(conditions)
+                + " ORDER BY [System.ChangedDate] DESC")
+        response = self.request("POST", "_apis/wit/wiql", body={"query": wiql}, params={"$top": 1000})
+        return [int(x["id"]) for x in response.get("workItems", [])]
+
     def assigned_ids(self) -> list[int]:
+        # Compatível com a versão anterior e com PAT/Azure CLI autenticados.
         identity = self.identity()
         username = identity.get("uniqueName") or identity.get("providerDisplayName")
         if not username:
-            raise DevError("Usuario nao possui uniqueName. Use PAT associado a uma conta com identidade Azure Boards.")
+            raise DevError("Usuário não possui uniqueName. Use PAT de conta com identidade no Azure Boards.")
         safe_user = str(username).replace("'", "''")
         safe_project = self.project.replace("'", "''")
         wiql = (
@@ -119,14 +153,8 @@ class AzureDevOps:
         response = self.request("POST", "_apis/wit/wiql", body={"query": wiql}, params={"$top": 1000})
         return [int(x["id"]) for x in response.get("workItems", [])]
 
-    def assigned_items(self) -> list[dict]:
-        result = []
-        ids = self.assigned_ids()
-        for offset in range(0, len(ids), 200):
-            batch = self.request("POST", "_apis/wit/workitemsbatch",
-                                 body={"ids": ids[offset:offset + 200], "errorPolicy": "Omit"})
-            result.extend(batch.get("value", []))
-        return result
+    def assigned_items(self, *, relations: bool = False) -> list[dict]:
+        return self.get_items(self.assigned_ids(), relations=relations)
 
     def patch_item(self, item_id: int, changes: list[dict]) -> dict:
         return self.request("PATCH", f"_apis/wit/workitems/{item_id}", body=changes, patch=True)
@@ -139,8 +167,7 @@ class AzureDevOps:
         current = item.get("fields", {})
         return self.update_field(item_id, "System.Tags", change_plan_tags(current, day))
 
-    def create_item(self, title: str, *, item_type: str = "Task", assign: str | None = None,
-                    day=None) -> dict:
+    def create_item(self, title: str, *, item_type: str = "Task", assign: str | None = None, day=None) -> dict:
         path = f"_apis/wit/workitems/${urllib.parse.quote(item_type, safe='')}"
         changes = [{"op": "add", "path": "/fields/System.Title", "value": title}]
         if assign:
@@ -176,11 +203,7 @@ class AzureDevOps:
         kind_path = kind_paths[kind]
         project_id = self.project_id()
         repo_id = self.repo_id()
-        if kind == "Branch":
-            # Em Azure Repos, GB identifica uma Git Branch; %2F tambem e exigido dentro do nome.
-            suffix = "GB" + fragment
-        else:
-            suffix = str(fragment)
+        suffix = "GB" + fragment if kind == "Branch" else str(fragment)
         encoded = "%2F".join([
             urllib.parse.quote(project_id, safe=""),
             urllib.parse.quote(repo_id, safe=""),
@@ -208,9 +231,8 @@ class AzureDevOps:
         body = {"sourceRefName": "refs/heads/" + branch,
                 "targetRefName": "refs/heads/" + base,
                 "title": f"AB#{item_id} - {title}"[:200],
-                "description": f"Implementacao da tarefa AB#{item_id}.\n\nAzure Boards: {self.project_url}/_workitems/edit/{item_id}"}
+                "description": f"Implementação da tarefa AB#{item_id}.\n\nAzure Boards: {self.project_url}/_workitems/edit/{item_id}"}
         return self.request("POST", path, body=body)
 
     def pr_web_url(self, pr_id: int) -> str:
-        # URL em GUI preserva os nomes do projeto via percent encoding.
         return self.project_url + "/_git/" + urllib.parse.quote(self.repo, safe="") + "/pullrequest/" + str(pr_id)

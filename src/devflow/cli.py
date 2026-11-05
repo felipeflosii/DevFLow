@@ -1,4 +1,4 @@
-"""Interface de linha de comando do DevFlow (execucao: dev)."""
+"""Interface de linha de comando do DevFlow (execução: dev)."""
 from __future__ import annotations
 
 import argparse
@@ -11,10 +11,18 @@ from datetime import date
 from . import __version__
 from .ado import AzureDevOps
 from .core import (
-    DevError, ado_remote, branch_for, branch_work_id, filter_items, parse_day,
-    read_config, render_table, save_config, scheduled_day,
+    DevError, ado_remote, assignee_name, branch_for, branch_work_id, filter_items,
+    item_type, parent_id, parse_day, read_config, render_table, save_config,
+    scheduled_day, short_assignee, truncate,
 )
 from . import gitops as g
+
+
+BACKLOG_TYPES = {
+    "pbi": {"Product Backlog Item", "User Story"},
+    "features": {"Feature"},
+    "epics": {"Epic"},
+}
 
 
 def parser_build() -> argparse.ArgumentParser:
@@ -22,38 +30,53 @@ def parser_build() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="action", required=True)
 
-    s = sub.add_parser("init", help="Configurar este repositorio (sem armazenar token)")
-    s.add_argument("--org", help="Nome da organizacao do Azure DevOps")
+    s = sub.add_parser("init", help="Configurar este repositório (sem armazenar token)")
+    s.add_argument("--org", help="Nome da organização do Azure DevOps")
     s.add_argument("--project", help="Nome do projeto Azure DevOps")
-    s.add_argument("--repo", help="Nome do repositorio Azure Repos")
+    s.add_argument("--repo", help="Nome do repositório Azure Repos")
     s.add_argument("--base", default="main", help="Branch base [main]")
     s.add_argument("--remote", default="origin", help="Remote Git [origin]")
 
-    sub.add_parser("config", help="Mostrar configuracao deste repositorio")
-    sub.add_parser("doctor", help="Diagnosticar Git, remoto e autenticacao")
+    sub.add_parser("config", help="Mostrar configuração deste repositório")
+    sub.add_parser("doctor", help="Diagnosticar Git, remoto e autenticação")
     sub.add_parser("sync", help="git fetch --prune sem modificar arquivos locais")
 
-    s = sub.add_parser("tasks", help="Mostrar tarefas atribuídas ao usuario logado")
+    s = sub.add_parser("tasks", help="Listar somente Tasks (não PBIs), por responsável ou período")
     scope = s.add_mutually_exclusive_group()
-    scope.add_argument("--all", action="store_true", help="Todas as tarefas abertas, inclusive sem data")
-    scope.add_argument("--week", action="store_true", help="Tarefas ate o fim da semana e atrasadas")
-    scope.add_argument("--date", metavar="AAAA-MM-DD", help="Tarefas apenas nesta data")
-    s.add_argument("--json", action="store_true", help="Saida JSON para scripts")
+    scope.add_argument("--all", action="store_true", help="Todas as Tasks abertas do projeto, inclusive de outras pessoas e sem data")
+    scope.add_argument("--mine", action="store_true", help="Apenas minhas Tasks abertas (padrão; inclusive sem data)")
+    scope.add_argument("--today", action="store_true", help="Apenas minhas Tasks agendadas até hoje")
+    scope.add_argument("--week", action="store_true", help="Minhas Tasks até o fim da semana e atrasadas")
+    scope.add_argument("--date", metavar="AAAA-MM-DD", help="Minhas Tasks desta data")
+    s.add_argument("--closed", action="store_true", help="Incluir Tasks concluídas na listagem selecionada")
+    s.add_argument("--area", metavar="AREA", help="Filtrar pelo caminho da área (correspondência parcial)")
+    s.add_argument("--json", action="store_true", help="Saída JSON para scripts")
 
-    sub.add_parser("dashboard", help="Selecionar tarefa em menu interativo")
-    s = sub.add_parser("start", help="Criar/retomar branch da tarefa atribuida")
+    for command, label in (("pbi", "PBIs"), ("features", "Features"), ("epics", "Epics"),
+                           ("workitems", "todos os Work Items")):
+        s = sub.add_parser(command, help=f"Listar {label} do projeto")
+        s.add_argument("--all", action="store_true", help="Listar todos os itens abertos do projeto")
+        s.add_argument("--closed", action="store_true", help="Incluir concluídos")
+        s.add_argument("--area", metavar="AREA", help="Filtrar por área")
+        s.add_argument("--json", action="store_true", help="Saída JSON")
+
+    s = sub.add_parser("show", help="Exibir os detalhes e a hierarquia Epic > Feature > PBI > Task")
+    s.add_argument("id", type=int, help="ID de qualquer Work Item")
+
+    sub.add_parser("dashboard", help="Selecionar uma Task em menu interativo")
+    s = sub.add_parser("start", help="Criar/retomar branch de Task atribuída a você")
     s.add_argument("id", type=int)
 
-    sub.add_parser("current", help="Mostrar branch e tarefa atual")
-    s = sub.add_parser("status", help="Mostrar tarefa, Git e PR em aberto")
+    sub.add_parser("current", help="Mostrar branch e Task atual")
+    sub.add_parser("status", help="Mostrar Task, Git e PR em aberto")
 
-    s = sub.add_parser("new", help="Criar tarefa para alguem, opcionalmente agendada")
-    s.add_argument("title", help="Titulo da tarefa")
-    s.add_argument("--assign", metavar="EMAIL", help="Usuario do Azure Boards")
+    s = sub.add_parser("new", help="Criar uma Task para alguém, opcionalmente agendada")
+    s.add_argument("title", help="Título da tarefa")
+    s.add_argument("--assign", metavar="EMAIL", help="Usuário do Azure Boards")
     s.add_argument("--date", metavar="AAAA-MM-DD", help="Data planejada")
     s.add_argument("--type", default="Task", help="Tipo Azure Boards, ex.: Task, Bug")
 
-    s = sub.add_parser("plan", help="Planejar uma ou mais tarefas com tag devday:AAA-MM-DD")
+    s = sub.add_parser("plan", help="Planejar uma ou mais Tasks com tag devday:AAAA-MM-DD")
     s.add_argument("ids", metavar="ID", type=int, nargs="+")
     s.add_argument("--date", required=True, metavar="AAAA-MM-DD")
 
@@ -61,13 +84,13 @@ def parser_build() -> argparse.ArgumentParser:
     s.add_argument("id", type=int)
     s.add_argument("email")
 
-    s = sub.add_parser("save", help="Commit + push com referencia AB#ID")
+    s = sub.add_parser("save", help="Commit + push com referência AB#ID")
     s.add_argument("message", help="Mensagem do commit")
-    s.add_argument("--yes", action="store_true", help="Confirmar inclusao de todos os arquivos automaticamente")
+    s.add_argument("--yes", action="store_true", help="Confirmar inclusão de todos os arquivos automaticamente")
 
-    s = sub.add_parser("finish", help="Commit pendente, push e criar PR vinculada a Task")
-    s.add_argument("-m", "--message", help="Mensagem do commit, se existirem arquivos alterados")
-    s.add_argument("--yes", action="store_true", help="Confirmar inclusao de todos os arquivos automaticamente")
+    s = sub.add_parser("finish", help="Commit pendente, push e criar PR vinculada à Task")
+    s.add_argument("-m", "--message", help="Mensagem do commit se existirem arquivos alterados")
+    s.add_argument("--yes", action="store_true", help="Confirmar inclusão de todos os arquivos automaticamente")
 
     return p
 
@@ -77,54 +100,162 @@ def client(cfg: dict) -> AzureDevOps:
 
 
 def config_guard(cfg: dict) -> None:
-    """Bloqueia operacoes Git se remote for outro projeto/repo."""
+    """Bloqueia operações Git se remote for de outro projeto/repo."""
     remote = g.remote_url(cfg["remote"])
     parsed = ado_remote(remote)
     if not parsed:
-        raise DevError("O remote nao e um Azure Repos reconhecido. Esta versao integra Azure Repos, nao GitHub.")
+        raise DevError("O remote não é um Azure Repos reconhecido. Esta versão integra Azure Repos, não GitHub.")
     for field in ("org", "project", "repo"):
         if parsed[field].casefold() != cfg[field].casefold():
-            raise DevError(f"Configuracao/remote divergente em {field}: remote={parsed[field]!r}, configurado={cfg[field]!r}.")
+            raise DevError(f"Configuração/remote divergente em {field}: remote={parsed[field]!r}, configurado={cfg[field]!r}.")
 
 
-def print_tasks(items: list[dict], *, mode: str, on_day: date) -> None:
-    title = {"today": "Tarefas de hoje + atrasadas", "week": "Tarefas desta semana + atrasadas",
-             "all": "Todas as minhas tarefas abertas", "date": f"Tarefas de {on_day.isoformat()}"}[mode]
+def load_pbi_ids(ado: AzureDevOps, items: list[dict]) -> dict[int, int]:
+    """Resolve PBIs pai em lote (não assume que todo pai é um PBI)."""
+    ids_by_task = {int(item["id"]): parent_id(item) for item in items}
+    unique_parent_ids = sorted({pid for pid in ids_by_task.values() if pid is not None})
+    if not unique_parent_ids:
+        return {}
+    parents = {int(p["id"]): p for p in ado.get_items(unique_parent_ids)}
+    result = {}
+    for task_id, pid in ids_by_task.items():
+        parent = parents.get(pid)
+        if parent and item_type(parent) in {"product backlog item", "user story"}:
+            result[task_id] = pid
+    return result
+
+
+def print_tasks(items: list[dict], *, mode: str, on_day: date, show_assignee: bool = False,
+                pbi_ids: dict[int, int] | None = None, show_closed: bool = False) -> None:
+    titles = {
+        "today": "Minhas Tasks de hoje + atrasadas",
+        "week": "Minhas Tasks desta semana + atrasadas",
+        "all": "Todas as Tasks abertas do projeto" if show_assignee else "Todas as minhas Tasks abertas",
+        "date": f"Minhas Tasks de {on_day.isoformat()}",
+    }
+    title = titles[mode].replace("abertas", "(incluindo concluídas)") if show_closed else titles[mode]
     print("\n" + title)
     print("=" * len(title))
     if not items:
-        print("Nenhuma tarefa encontrada. Veja 'dev tasks --all' ou agende com 'dev plan ID --date AAAA-MM-DD'.")
+        print("Nenhuma Task encontrada. Use 'dev tasks --all', 'dev tasks --mine' ou 'dev plan ID --date AAAA-MM-DD'.")
         return
+    width = shutil.get_terminal_size(fallback=(110, 24)).columns
+    # Largura previsível em terminais comuns, sem perder o ID da Task nem o PBI.
+    overhead = 40 + (20 if show_assignee else 0)
+    title_width = max(18, min(65, width - overhead))
+    headers = ["ID", "Estado", "Planejada"]
+    if show_assignee:
+        headers += ["Responsável"]
+    headers += ["PBI", "Título"]
     rows = []
     for item in items:
-        f = item.get("fields", {})
-        day = scheduled_day(f)
+        fields = item.get("fields", {})
+        day = scheduled_day(fields)
         when = day.isoformat() if day else "sem data"
         if day and day < on_day:
             when += " (!)"
-        rows.append([str(item["id"]), str(f.get("System.WorkItemType", "")),
-                     str(f.get("System.State", "")), when, str(f.get("System.Title", ""))[:65]])
-    print(render_table(["ID", "Tipo", "Estado", "Planejada", "Titulo"], rows))
-    print("\nUse: dev start <ID>")
+        row = [str(item["id"]), truncate(fields.get("System.State", ""), 14), when]
+        if show_assignee:
+            row.append(short_assignee(fields))
+        row += [f"#{pbi_ids[int(item['id'])]}" if pbi_ids and int(item["id"]) in pbi_ids else "—",
+                truncate(fields.get("System.Title", ""), title_width)]
+        rows.append(row)
+    print(render_table(headers, rows))
+    print(f"\nTotal: {len(items)} Task(s). Use: dev start <ID> | dev show <ID>")
 
 
 def my_tasks(ado: AzureDevOps, args) -> tuple[list[dict], str, date]:
+    """Mantido como ponto único de filtragem para tasks e dashboard."""
     day = parse_day(args.date) if getattr(args, "date", None) else date.today()
+    mine = bool(getattr(args, "mine", False))
+    all_teams = bool(getattr(args, "all", False)) and not mine
     mode = "date" if getattr(args, "date", None) else (
-        "all" if getattr(args, "all", False) else "week" if getattr(args, "week", False) else "today")
-    items = filter_items(ado.assigned_items(), mode=mode, on_day=day)
+        "week" if getattr(args, "week", False) else "today" if getattr(args, "today", False) else "all")
+    # Sem flags, dev tasks exibe TODAS as minhas Tasks abertas, inclusive as sem data.
+    include_closed = bool(getattr(args, "closed", False))
+    if all_teams:
+        ids = ado.query_ids(item_types={"Task"}, mine=False, include_closed=include_closed)
+        source = ado.get_items(ids, relations=True)
+    else:
+        source = ado.assigned_items(relations=True)
+    items = filter_items(source, mode=mode, on_day=day, include_closed=include_closed,
+                         area=getattr(args, "area", None))
     return items, mode, day
+
+
+def list_backlog(ado: AzureDevOps, args) -> list[dict]:
+    work_types = None if args.action == "workitems" else BACKLOG_TYPES[args.action]
+    ids = ado.query_ids(item_types=work_types, mine=False, include_closed=args.closed)
+    items = ado.get_items(ids)
+    # --all mantido para consistência, sem interferir no padrão de listagem.
+    if args.action == "workitems":
+        types = {"task", "bug", "product backlog item", "user story", "issue", "feature", "epic"}
+    else:
+        types = {s.casefold() for s in work_types}
+    return filter_items(items, mode="all", on_day=date.today(), types=types,
+                        include_closed=args.closed, area=args.area)
+
+
+def print_backlog(items: list[dict], action: str) -> None:
+    print(f"\n{action.upper()} — Azure Boards")
+    print("=" * (len(action) + 17))
+    if not items:
+        print("Nenhum Work Item encontrado.")
+        return
+    rows = [[str(i["id"]), str(i.get("fields", {}).get("System.WorkItemType", "")),
+             str(i.get("fields", {}).get("System.State", "")),
+             short_assignee(i.get("fields", {})), truncate(i.get("fields", {}).get("System.Title", ""), 62)]
+            for i in items]
+    print(render_table(["ID", "Tipo", "Estado", "Responsável", "Título"], rows))
+    print(f"\nTotal: {len(items)} item(ns). Use: dev show <ID>")
+
+
+def show_item(ado: AzureDevOps, work_id: int) -> None:
+    if work_id <= 0:
+        raise DevError("O ID deve ser positivo.")
+    current = ado.get_item(work_id, relations=True)
+    fields = current.get("fields", {})
+    print(f"\n{fields.get('System.WorkItemType', 'Work Item')} #{work_id} — {fields.get('System.Title', '')}")
+    print("Estado:      " + str(fields.get("System.State", "não informado")))
+    print("Responsável: " + assignee_name(fields))
+    print("Área:        " + str(fields.get("System.AreaPath", "não informada")))
+    print("Iteração:    " + str(fields.get("System.IterationPath", "não informada")))
+    when = scheduled_day(fields)
+    print("Planejada:   " + (when.isoformat() if when else "sem data"))
+    print("URL:         " + ado.project_url + f"/_workitems/edit/{work_id}")
+    lineage = [current]
+    seen = {work_id}
+    for _ in range(12):
+        pid = parent_id(current)
+        if pid is None or pid in seen:
+            break
+        seen.add(pid)
+        current = ado.get_item(pid, relations=True)
+        lineage.append(current)
+    print("\nHierarquia:")
+    for depth, item in enumerate(reversed(lineage)):
+        f = item.get("fields", {})
+        print("  " * depth + f"{f.get('System.WorkItemType', 'Item')} #{item['id']} — {f.get('System.Title', '')}")
+
+
+def ensure_task(item: dict) -> None:
+    typ = str(item.get("fields", {}).get("System.WorkItemType", ""))
+    if typ.casefold() != "task":
+        raise DevError(f"Work Item #{item['id']} é '{typ}', não Task. "
+                       "Use 'dev tasks --all' para localizar uma Task e 'dev show ID' para ver a hierarquia.")
 
 
 def do_start(ado: AzureDevOps, cfg: dict, item_id: int) -> None:
     if item_id <= 0:
         raise DevError("ID de tarefa deve ser positivo.")
-    # Evita criar branch para tarefa de outro dev. Consulta WIQL como usuario autenticado.
-    if item_id not in ado.assigned_ids():
-        raise DevError(f"A Task #{item_id} nao esta atribuida a sua conta autenticada no Azure Boards.")
     item = ado.get_item(item_id)
-    if str(item.get("fields", {}).get("System.State", "")).lower() in {"done", "closed", "removed", "completed"}:
-        raise DevError("A tarefa ja esta encerrada no Azure Boards.")
+    ensure_task(item)
+    if item_id not in ado.assigned_ids():
+        raise DevError(f"A Task #{item_id} não está atribuída à sua conta autenticada no Azure Boards.")
+    if str(item.get("fields", {}).get("System.State", "")).casefold() in {
+        "done", "closed", "removed", "completed", "cut", "resolved"
+    }:
+        raise DevError("A Task já está encerrada no Azure Boards.")
     config_guard(cfg)
     wanted = branch_for(item)
     action = g.switch_task(cfg["remote"], cfg["base"], wanted)
@@ -133,16 +264,16 @@ def do_start(ado: AzureDevOps, cfg: dict, item_id: int) -> None:
         ado.add_artifact_link(item_id, "Branch", wanted)
         print(f"Azure Boards: branch associada a Task #{item_id}.")
     except DevError as exc:
-        print(f"AVISO: branch criada, mas associacao com Boards falhou: {exc}", file=sys.stderr)
+        print(f"AVISO: branch criada, mas associação com Boards falhou: {exc}", file=sys.stderr)
     try:
         state = ado.move_to_in_progress(item)
         if state:
-            print(f"Tarefa em estado: {state}.")
+            print(f"Task em estado: {state}.")
         else:
-            print("Estado nao alterado: nao existe transicao conhecida para Doing/In Progress/Active.")
+            print("Estado não alterado: não existe transição conhecida para Doing/In Progress/Active.")
     except DevError as exc:
-        print(f"AVISO: nao consegui atualizar estado no Boards: {exc}", file=sys.stderr)
-    print("Proximo passo: desenvolva, depois execute 'dev finish'.")
+        print(f"AVISO: não consegui atualizar estado no Boards: {exc}", file=sys.stderr)
+    print("Próximo passo: desenvolva, depois execute 'dev finish'.")
 
 
 def current_item_id() -> int:
@@ -153,13 +284,13 @@ def do_finish(ado: AzureDevOps, cfg: dict, *, message: str | None, yes: bool) ->
     config_guard(cfg)
     item_id = current_item_id()
     item = ado.get_item(item_id)
+    ensure_task(item)
     branch = g.branch()
     existing = ado.active_pr(branch)
     if existing:
-        raise DevError(f"Ja existe PR ativa para esta branch: {ado.pr_web_url(existing['pullRequestId'])}")
-    # So acontece aqui se tiver alteracoes; nunca aplica merge ou checkout.
+        raise DevError(f"Já existe PR ativa para esta branch: {ado.pr_web_url(existing['pullRequestId'])}")
     if g.git("status", "--porcelain") and not message:
-        message = str(item.get("fields", {}).get("System.Title", "Implementar tarefa"))
+        message = str(item.get("fields", {}).get("System.Title", "Implementar Task"))
     if message is not None:
         was_committed = g.commit_and_push(cfg["remote"], item_id, message, yes=yes)
         print("Commit criado e enviado." if was_committed else "Sem novos arquivos; branch enviada.")
@@ -169,8 +300,8 @@ def do_finish(ado: AzureDevOps, cfg: dict, *, message: str | None, yes: bool) ->
     g.ensure_base(cfg["remote"], cfg["base"])
     ahead = int(g.git("rev-list", "--count", f"{cfg['remote']}/{cfg['base']}..HEAD"))
     if ahead == 0:
-        raise DevError("Nenhum commit novo em relacao a branch base. Nao criei PR vazia.")
-    title = str(item.get("fields", {}).get("System.Title", "Tarefa"))
+        raise DevError("Nenhum commit novo em relação à branch base. Não criei PR vazia.")
+    title = str(item.get("fields", {}).get("System.Title", "Task"))
     pr = ado.create_pr(branch, cfg["base"], title, item_id)
     pr_id = int(pr["pullRequestId"])
     print(f"\nPR #{pr_id} criada: {ado.pr_web_url(pr_id)}")
@@ -178,22 +309,22 @@ def do_finish(ado: AzureDevOps, cfg: dict, *, message: str | None, yes: bool) ->
         ado.add_artifact_link(item_id, "Pull Request", str(pr_id))
         print(f"PR vinculada a Task #{item_id}.")
     except DevError as exc:
-        print(f"AVISO: PR criada, mas vinculo com Boards falhou: {exc}", file=sys.stderr)
-    print("A PR ficou aguardando revisao. O comando NAO faz merge nem ignora politicas da main.")
+        print(f"AVISO: PR criada, mas vínculo com Boards falhou: {exc}", file=sys.stderr)
+    print("A PR ficou aguardando revisão. O comando NÃO faz merge nem ignora políticas da main.")
 
 
 def main(argv: list[str] | None = None) -> int:
     try:
         return run(argv)
     except (DevError, EOFError, KeyboardInterrupt) as exc:
-        print("\nErro: " + (str(exc) or "operacao interrompida."), file=sys.stderr)
+        print("\nErro: " + (str(exc) or "operação interrompida."), file=sys.stderr)
         return 1
 
 
 def run(argv: list[str] | None = None) -> int:
     args = parser_build().parse_args(argv)
     root = g.git_root()
-    os.chdir(root)  # Os comandos Git sempre operam na raiz do repositorio.
+    os.chdir(root)
     if args.action == "init":
         remote = g.remote_url(args.remote)
         detected = ado_remote(remote) or {}
@@ -202,7 +333,7 @@ def run(argv: list[str] | None = None) -> int:
                 "repo": args.repo or detected.get("repo"),
                 "base": args.base, "remote": args.remote}
         if not all(data.values()):
-            raise DevError("Nao detectei Azure Repos. Informe --org, --project e --repo explicitamente.")
+            raise DevError("Não detectei Azure Repos. Informe --org, --project e --repo explicitamente.")
         config_guard(data)
         saved = save_config(root, data)
         print(f"Configurado em {saved} (sem segredos).\n" + json.dumps(data, ensure_ascii=False, indent=2))
@@ -216,37 +347,53 @@ def run(argv: list[str] | None = None) -> int:
     if args.action == "sync":
         config_guard(cfg)
         g.sync(cfg["remote"])
-        print("Referencias atualizadas. Nenhuma branch local sofreu merge/rebase/reset.")
+        print("Referências atualizadas. Nenhuma branch local sofreu merge/rebase/reset.")
         return 0
     ado = client(cfg)
     if args.action == "doctor":
-        print(f"DevFlow {__version__} | Git: {shutil.which('git') or 'ausente'} | Azure CLI: {shutil.which('az') or 'nao instalada'}")
+        print(f"DevFlow {__version__} | Git: {shutil.which('git') or 'ausente'} | Azure CLI: {shutil.which('az') or 'não instalada'}")
         config_guard(cfg)
         print("Remote Azure Repos: OK")
         user = ado.identity()
-        print("Usuario Azure Boards: " + str(user.get("uniqueName") or user.get("providerDisplayName") or "conectado"))
+        print("Usuário Azure Boards: " + str(user.get("uniqueName") or user.get("providerDisplayName") or "conectado"))
         print("Projeto: " + ado.project_id())
-        print("Repositorio: " + ado.repo_id())
-        print("Diagnostico concluido. Teste 'dev tasks --all'.")
+        print("Repositório: " + ado.repo_id())
+        print("Diagnóstico concluído. Teste 'dev tasks --all'.")
         return 0
     if args.action == "tasks":
         items, mode, day = my_tasks(ado, args)
         if args.json:
             print(json.dumps(items, ensure_ascii=False, indent=2))
         else:
-            print_tasks(items, mode=mode, on_day=day)
+            pbi_ids = load_pbi_ids(ado, items)
+            print_tasks(items, mode=mode, on_day=day, show_assignee=args.all,
+                        pbi_ids=pbi_ids, show_closed=args.closed)
+        return 0
+    if args.action in {"pbi", "features", "epics", "workitems"}:
+        items = list_backlog(ado, args)
+        if args.json:
+            print(json.dumps(items, ensure_ascii=False, indent=2))
+        else:
+            print_backlog(items, args.action)
+        return 0
+    if args.action == "show":
+        show_item(ado, args.id)
         return 0
     if args.action == "dashboard":
         class Scope:
             date = None
             all = False
+            mine = False
             week = False
+            today = False
+            closed = False
+            area = None
         items, mode, day = my_tasks(ado, Scope())
-        print_tasks(items, mode=mode, on_day=day)
+        print_tasks(items, mode=mode, on_day=day, pbi_ids=load_pbi_ids(ado, items))
         if items:
             chosen = input("\nDigite o ID para iniciar (Enter para sair): ").strip()
             if chosen:
-                if not chosen.isdigit() or int(chosen) not in {int(i['id']) for i in items}:
+                if not chosen.isdigit() or int(chosen) not in {int(i["id"]) for i in items}:
                     raise DevError("Escolha um ID que apareceu na tabela.")
                 do_start(ado, cfg, int(chosen))
         return 0
@@ -263,16 +410,16 @@ def run(argv: list[str] | None = None) -> int:
             return 0
         item = ado.get_item(work_id)
         fields = item.get("fields", {})
-        print(f"Task #{work_id}: {fields.get('System.Title', '')} | {fields.get('System.State', '')}")
+        print(f"{fields.get('System.WorkItemType', 'Item')} #{work_id}: {fields.get('System.Title', '')} | {fields.get('System.State', '')}")
         if args.action == "status":
-            print("Alteracoes locais:\n" + (g.git("status", "--short") or "Nenhuma"))
+            print("Alterações locais:\n" + (g.git("status", "--short") or "Nenhuma"))
             pr = ado.active_pr(current_branch)
             print("PR: " + (ado.pr_web_url(pr["pullRequestId"]) if pr else "Nenhuma PR ativa"))
         return 0
     if args.action == "new":
         day = parse_day(args.date) if args.date else None
         item = ado.create_item(args.title, item_type=args.type, assign=args.assign, day=day)
-        print(f"Criada Task #{item['id']}: {args.title}")
+        print(f"Criado {args.type} #{item['id']}: {args.title}")
         print(ado.project_url + f"/_workitems/edit/{item['id']}")
         if not args.assign:
             print("Dica: --assign usuario@empresa.com para atribuir a um desenvolvedor.")
@@ -281,15 +428,16 @@ def run(argv: list[str] | None = None) -> int:
         day = parse_day(args.date)
         for item_id in args.ids:
             ado.plan_item(item_id, day)
-            print(f"Task #{item_id} planejada para {day.isoformat()}.")
+            print(f"Work Item #{item_id} planejado para {day.isoformat()}.")
         return 0
     if args.action == "assign":
         ado.update_field(args.id, "System.AssignedTo", args.email)
-        print(f"Task #{args.id} atribuida a {args.email}.")
+        print(f"Work Item #{args.id} atribuído a {args.email}.")
         return 0
     if args.action == "save":
         config_guard(cfg)
         work_id = current_item_id()
+        ensure_task(ado.get_item(work_id))
         created = g.commit_and_push(cfg["remote"], work_id, args.message, yes=args.yes)
         print("Commit criado e enviado." if created else "Nada a commitar; branch enviada.")
         return 0

@@ -1,4 +1,4 @@
-"""Funções puras, configuracao local e erros do DevFlow."""
+"""Funções puras, configuração local e formatação do DevFlow."""
 from __future__ import annotations
 
 import json
@@ -8,16 +8,20 @@ import sys
 import unicodedata
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
+from urllib.parse import unquote, urlparse
 
 
 class DevError(Exception):
-    """Erro tratado e exibido sem traceback para o usuario."""
+    """Erro tratado e exibido sem traceback."""
 
 
 BRANCH_PATTERN = re.compile(r"^(feature|fix|refactor|hotfix|chore)/(\d+)-([a-z0-9][a-z0-9-]*)$")
 DATE_TAG_PREFIX = "devday:"
 CLOSED_STATES = {"done", "closed", "resolved", "removed", "completed", "cut"}
-DEFAULT_TYPES = {"task", "bug", "product backlog item", "user story", "issue"}
+TASK_TYPES = {"task"}
+WORK_ITEM_TYPES = {"task", "bug", "product backlog item", "user story", "issue", "feature", "epic"}
+PARENT_RELATION = "System.LinkTypes.Hierarchy-Reverse"
 
 
 def slugify(text: str, max_len: int = 48) -> str:
@@ -36,7 +40,7 @@ def branch_for(item: dict) -> str:
 def branch_work_id(branch: str) -> int:
     matched = BRANCH_PATTERN.fullmatch(branch)
     if not matched:
-        raise DevError("Branch sem ID reconhecivel. Use 'dev start ID' (ex.: feature/142-login).")
+        raise DevError("Branch sem ID reconhecível. Use 'dev start ID' (ex.: feature/142-login).")
     return int(matched.group(2))
 
 
@@ -48,7 +52,7 @@ def parse_day(value: str) -> date:
     try:
         return date.fromisoformat(value)
     except ValueError as exc:
-        raise DevError("Data invalida: use AAAA-MM-DD (ex.: 2026-11-06).") from exc
+        raise DevError("Data inválida: use AAAA-MM-DD (ex.: 2026-11-06).") from exc
 
 
 def tags_of(fields: dict) -> list[str]:
@@ -71,18 +75,26 @@ def change_plan_tags(fields: dict, day: date) -> str:
     return "; ".join(other + [plan_tag(day)])
 
 
+def item_type(item: dict) -> str:
+    return str(item.get("fields", {}).get("System.WorkItemType", "")).casefold()
+
+
 def item_is_open(item: dict) -> bool:
-    return str(item.get("fields", {}).get("System.State", "")).lower() not in CLOSED_STATES
+    return str(item.get("fields", {}).get("System.State", "")).casefold() not in CLOSED_STATES
 
 
-def filter_items(items: list[dict], *, mode: str, on_day: date) -> list[dict]:
+def filter_items(items: list[dict], *, mode: str, on_day: date, types: set[str] | None = None,
+                 include_closed: bool = False, area: str | None = None) -> list[dict]:
+    """Aplica filtros de exibição sem modificar os dados vindos do Azure Boards."""
     filtered = []
     monday = on_day - timedelta(days=on_day.weekday())
     sunday = monday + timedelta(days=6)
+    allowed = TASK_TYPES if types is None else {t.casefold() for t in types}
     for item in items:
         fields = item.get("fields", {})
-        typ = str(fields.get("System.WorkItemType", "")).lower()
-        if typ not in DEFAULT_TYPES or not item_is_open(item):
+        if item_type(item) not in allowed or (not include_closed and not item_is_open(item)):
+            continue
+        if area and area.casefold() not in str(fields.get("System.AreaPath", "")).casefold():
             continue
         scheduled = scheduled_day(fields)
         if mode == "all":
@@ -97,15 +109,48 @@ def filter_items(items: list[dict], *, mode: str, on_day: date) -> list[dict]:
             raise DevError("Modo de listagem desconhecido.")
         if visible:
             filtered.append(item)
-    return sorted(filtered, key=lambda x: (scheduled_day(x.get('fields', {})) or date.max, x['id']))
+    return sorted(filtered, key=lambda x: (scheduled_day(x.get("fields", {})) or date.max, x["id"]))
+
+
+def parent_id(item: dict) -> int | None:
+    """Localiza o pai pela relação de hierarquia (com fallback para System.Parent)."""
+    for rel in item.get("relations") or []:
+        if rel.get("rel") == PARENT_RELATION:
+            candidate = str(rel.get("url", "")).rstrip("/").rsplit("/", 1)[-1]
+            if candidate.isdigit():
+                return int(candidate)
+    candidate = item.get("fields", {}).get("System.Parent")
+    if candidate is not None and str(candidate).isdigit():
+        return int(candidate)
+    return None
+
+
+def assignee_name(fields: dict) -> str:
+    value = fields.get("System.AssignedTo")
+    if isinstance(value, dict):
+        value = value.get("displayName") or value.get("uniqueName") or value.get("name")
+    return str(value).strip() if value else "Não atribuído"
+
+
+def short_assignee(fields: dict, max_width: int = 17) -> str:
+    full = assignee_name(fields)
+    if full == "Não atribuído":
+        return full
+    # Identidade pode vir como e-mail em algumas respostas do Azure DevOps.
+    if "@" in full:
+        short = full.split("@", 1)[0]
+    else:
+        words = full.split()
+        short = f"{words[0]} {words[1][0]}." if len(words) > 1 else full
+    return short if len(short) <= max_width else short[:max_width - 1] + "…"
+
+
+def truncate(value: Any, max_width: int) -> str:
+    s = str(value)
+    return s if len(s) <= max_width else s[:max_width - 1] + "…"
 
 
 def config_file() -> Path:
-    """Return a per-user config path native to the current operating system.
-
-    Linux/macOS: $XDG_CONFIG_HOME/devflow/config.json or ~/.config/devflow/config.json.
-    Windows: %LOCALAPPDATA%/DevFlow/config.json (fall back to APPDATA).
-    """
     if sys.platform == "win32":
         local = os.getenv("LOCALAPPDATA") or os.getenv("APPDATA")
         root = Path(local) if local else Path.home() / "AppData" / "Local"
@@ -122,14 +167,14 @@ def repo_key(root: Path) -> str:
 def read_config(root: Path) -> dict:
     path = config_file()
     if not path.exists():
-        raise DevError("Projeto nao configurado. Rode 'dev init --org ... --project ... --repo ...'.")
+        raise DevError("Projeto não configurado. Rode 'dev init --org ... --project ... --repo ...'.")
     try:
         config = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        raise DevError(f"Configuracao invalida em {path}: {exc}") from exc
+        raise DevError(f"Configuração inválida em {path}: {exc}") from exc
     data = config.get("repositories", {}).get(repo_key(root))
     if not data:
-        raise DevError("Este repositorio ainda nao foi configurado. Execute 'dev init'.")
+        raise DevError("Este repositório ainda não foi configurado. Execute 'dev init'.")
     return data
 
 
@@ -141,9 +186,9 @@ def save_config(root: Path, data: dict) -> Path:
         try:
             content = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            raise DevError(f"Configuracao invalida em {path}: {exc}") from exc
+            raise DevError(f"Configuração inválida em {path}: {exc}") from exc
     content.setdefault("repositories", {})[repo_key(root)] = data
-    # Nenhum token, PAT ou senha e persistido aqui.
+    # Nenhuma credencial é salva.
     path.write_text(json.dumps(content, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if sys.platform != "win32":
         path.chmod(0o600)
@@ -151,12 +196,6 @@ def save_config(root: Path, data: dict) -> Path:
 
 
 def ado_remote(remote_url: str) -> dict | None:
-    """Extrai organizacao, projeto e repositorio de remotes Azure Repos.
-
-    Ex.: https://dev.azure.com/ORG/PROJ/_git/REPO
-    Ex.: git@ssh.dev.azure.com:v3/ORG/PROJ/REPO
-    """
-    from urllib.parse import urlparse, unquote
     if remote_url.startswith("git@ssh.dev.azure.com:v3/"):
         parts = remote_url.split(":v3/", 1)[1].strip("/").split("/")
         if len(parts) >= 3:
@@ -172,6 +211,8 @@ def ado_remote(remote_url: str) -> dict | None:
 
 def render_table(headers: list[str], rows: list[list[str]]) -> str:
     widths = [max(len(h), *(len(str(row[i])) for row in rows)) for i, h in enumerate(headers)]
-    def fmt(row):
+
+    def fmt(row: list[str]) -> str:
         return "  ".join(str(cell).ljust(widths[i]) for i, cell in enumerate(row))
+
     return "\n".join([fmt(headers), "  ".join("-" * n for n in widths)] + [fmt(row) for row in rows])
