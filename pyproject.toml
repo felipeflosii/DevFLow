@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "devflow-ado"
+version = "0.1.0"
+description = "CLI de tarefas diarias Azure Boards + branches Git + Pull Requests Azure Repos"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "CitizenTech"}]
+dependencies = []
+
+[project.scripts]
+dev = "devflow.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
