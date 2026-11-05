@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shutil
 import subprocess
 import urllib.error
 import urllib.parse
@@ -21,10 +22,14 @@ def get_auth_headers() -> dict[str, str]:
         basic = base64.b64encode((":" + pat).encode()).decode()
         return {"Authorization": f"Basic {basic}"}
     try:
+        # No Windows, o Azure CLI pode ser disponibilizado como az.cmd.
+        executable = shutil.which("az")
+        if not executable:
+            raise FileNotFoundError("az")
         process = subprocess.run(
-            ["az", "account", "get-access-token", "--resource", _RESOURCE,
+            [executable, "account", "get-access-token", "--resource", _RESOURCE,
              "--query", "accessToken", "-o", "tsv"],
-            capture_output=True, text=True, check=False,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
         )
     except FileNotFoundError as exc:
         raise DevError("Autenticacao ausente: instale Azure CLI e execute 'az login', ou defina ADO_PAT.") from exc

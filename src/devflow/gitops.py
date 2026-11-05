@@ -1,6 +1,7 @@
 """Git chamado sem shell: nenhum comando destrutivo implicito."""
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 from .core import DevError
@@ -8,11 +9,15 @@ from .core import DevError
 
 def git(*args: str, cwd: Path | None = None, capture: bool = True) -> str:
     try:
+        executable = shutil.which("git")
+        if not executable:
+            raise FileNotFoundError("git")
         result = subprocess.run(
-            ["git", *args], cwd=cwd, text=True, capture_output=capture, check=False
+            [executable, *args], cwd=cwd, text=True, encoding="utf-8", errors="replace",
+            capture_output=capture, check=False,
         )
     except FileNotFoundError as exc:
-        raise DevError("Git nao encontrado no PATH. Instale com sudo apt install git.") from exc
+        raise DevError("Git nao encontrado no PATH. Instale o Git para seu sistema e reabra o terminal.") from exc
     if result.returncode != 0:
         details = (result.stderr or result.stdout or "").strip() if capture else ""
         raise DevError(f"git {' '.join(args)} falhou: {details or 'verifique a saida acima'}")

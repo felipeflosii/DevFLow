@@ -1,71 +1,57 @@
-# Publicar DevFlow e habilitar instalacao por curl
+# Publicação pública do DevFlow CLI 0.2.0
 
-O projeto foi preparado para o repositorio publico: `felipeflosii/devflow-cli`.
-Enquanto esse repositorio nao existir e nao contiver os arquivos, nenhum comando remoto de instalacao funciona.
+O projeto foi preparado para o endereço `https://github.com/felipeflosii/devflow-cli`, que **precisa existir e estar público** antes de qualquer instalação remota funcionar.
 
-## Publicacao inicial via GitHub CLI
+## Primeiro upload
 
-Instale e autentique a CLI GitHub (`gh auth login`). Na pasta que contem `pyproject.toml`:
+Na pasta extraída, contendo `pyproject.toml`:
 
 ```bash
 git init -b main
 git add .
-git commit -m 'feat: publicar DevFlow CLI com instalador curl'
+git commit -m 'feat: adicionar instaladores Windows, macOS e Linux'
+gh auth login
 gh repo create felipeflosii/devflow-cli --public --source=. --remote=origin --push
 ```
 
-Se `git init` ou commit ja tiverem sido executados, nao repita sem necessidade. Se o repositorio remoto ja existir e estiver vazio, use `git remote add origin https://github.com/felipeflosii/devflow-cli.git` e `git push -u origin main`.
+Se já existe um repositório Git local, não repita `git init`. Se o GitHub já tiver um repositório vazio `devflow-cli`, use `git remote add origin https://github.com/felipeflosii/devflow-cli.git` e `git push -u origin main`, depois de verificar a branch.
 
-## Comando para usuarios finais (Zorin OS / Ubuntu)
+## Instalação dos desenvolvedores
 
-Primeiro, instalar os pre-requisitos:
-
-```bash
-sudo apt update
-sudo apt install -y python3 git pipx
-pipx ensurepath
-```
-
-Depois, baixar e inspecionar o instalador (mais seguro):
-
-```bash
-curl -fsSLo devflow-install.sh https://raw.githubusercontent.com/felipeflosii/devflow-cli/main/install.sh
-cat devflow-install.sh
-bash devflow-install.sh
-```
-
-Ou, se confia no repositório e quer uma linha:
+**macOS/Linux** (Terminal/zsh/Bash):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/felipeflosii/devflow-cli/main/install.sh | bash
 ```
 
-O instalador nao solicita sudo nem armazena credenciais. O `pipx` instala a ferramenta Python isoladamente a partir do codigo Git. O `dev` fica disponivel apos reabrir o terminal.
+**Windows** (PowerShell):
 
-Sem curl:
-
-```bash
-pipx install 'git+https://github.com/felipeflosii/devflow-cli.git'
+```powershell
+irm https://raw.githubusercontent.com/felipeflosii/devflow-cli/main/install.ps1 | iex
 ```
 
-Atualizar para a versao atual da main:
+Antes desses comandos, é necessário instalar Python 3.11+, Git e pipx. Veja instruções específicas no README. Para evitar executar código remoto sem revisão, faça download e leia o script antes.
+
+## Verificações depois de publicar
+
+- Repositório público acessível pelo navegador.
+- `install.sh` e `install.ps1` acessíveis por `raw.githubusercontent.com` sem erro 404.
+- GitHub Actions `Cross-platform tests` verde para Ubuntu, macOS e Windows.
+- Instalação em uma máquina de cada sistema, `dev --version` e `dev --help` funcionando.
+- Após `az login`, validar `dev doctor` e o ciclo `dev tasks` / `dev start` / `dev finish` com uma tarefa de teste no **Azure Repos**.
+
+## Atualizações
+
+Após cada commit publicado, quem tiver DevFlow pode atualizar via:
 
 ```bash
-pipx install --force 'git+https://github.com/felipeflosii/devflow-cli.git'
+pipx install --force git+https://github.com/felipeflosii/devflow-cli.git
 ```
 
-Desinstalar:
+No Windows também é válido `py -m pipx install --force git+https://github.com/felipeflosii/devflow-cli.git`.
 
-```bash
-pipx uninstall devflow-ado
-```
+## Recomendações de distribuição
 
-## Verificacoes apos publicar
-
-- O repositorio esta **publico** em https://github.com/felipeflosii/devflow-cli
-- https://raw.githubusercontent.com/felipeflosii/devflow-cli/main/install.sh retorna o script sem 404
-- GitHub Actions `Tests` ficou verde
-- `dev --help` funciona em maquina limpa com Git, Python e pipx
-- No projeto Azure Repos local, `dev init` e `dev doctor` funcionam depois de configurar autenticacao Azure
-
-**Atencao**: executar `curl | bash` baixa e executa codigo remoto. Leia o script antes; para ambientes controlados prefira instalar um commit/tag especifico usando `pipx`.
+- Crie tags versionadas (`v0.2.0` etc.) e releases para que equipes possam fixar uma versão confiável.
+- O instalador padrão acompanha a `main` e, portanto, o conteúdo remoto pode mudar. Leia os scripts ou instale a partir de um commit/tag específico.
+- Não inclua tokens ou credenciais no repositório público.

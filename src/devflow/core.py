@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import unicodedata
 from datetime import date, timedelta
 from pathlib import Path
@@ -100,7 +101,16 @@ def filter_items(items: list[dict], *, mode: str, on_day: date) -> list[dict]:
 
 
 def config_file() -> Path:
-    location = os.getenv("XDG_CONFIG_HOME", "")
+    """Return a per-user config path native to the current operating system.
+
+    Linux/macOS: $XDG_CONFIG_HOME/devflow/config.json or ~/.config/devflow/config.json.
+    Windows: %LOCALAPPDATA%/DevFlow/config.json (fall back to APPDATA).
+    """
+    if sys.platform == "win32":
+        local = os.getenv("LOCALAPPDATA") or os.getenv("APPDATA")
+        root = Path(local) if local else Path.home() / "AppData" / "Local"
+        return root / "DevFlow" / "config.json"
+    location = os.getenv("XDG_CONFIG_HOME")
     root = Path(location).expanduser() if location else Path.home() / ".config"
     return root / "devflow" / "config.json"
 
@@ -135,7 +145,8 @@ def save_config(root: Path, data: dict) -> Path:
     content.setdefault("repositories", {})[repo_key(root)] = data
     # Nenhum token, PAT ou senha e persistido aqui.
     path.write_text(json.dumps(content, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    path.chmod(0o600)
+    if sys.platform != "win32":
+        path.chmod(0o600)
     return path
 
 
