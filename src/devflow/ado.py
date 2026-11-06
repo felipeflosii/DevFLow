@@ -45,19 +45,23 @@ class AzureDevOps:
         self.repo = repo
         self.base = f"https://dev.azure.com/{urllib.parse.quote(self.org, safe='')}"
         self.project_url = self.base + "/" + urllib.parse.quote(project, safe="")
+        self.release_project_url = ("https://vsrm.dev.azure.com/" +
+                                    urllib.parse.quote(self.org, safe="") + "/" +
+                                    urllib.parse.quote(project, safe=""))
         self._headers: dict[str, str] | None = None
         self._project_id: str | None = None
         self._repo_id: str | None = None
 
     def request(self, method: str, api_path: str, *, body: Any = None, params: dict | None = None,
-                patch: bool = False, project: bool = True, version: str = "7.1") -> Any:
+                patch: bool = False, project: bool = True, version: str = "7.1",
+                release: bool = False) -> Any:
         values = {"api-version": version}
         values.update(params or {})
-        root = self.project_url if project else self.base
+        root = self.release_project_url if release else (self.project_url if project else self.base)
         url = root + "/" + api_path.lstrip("/") + "?" + urllib.parse.urlencode(values)
         if self._headers is None:
             self._headers = get_auth_headers()
-        headers = {**self._headers, "Accept": "application/json", "User-Agent": "DevFlow/0.4.0"}
+        headers = {**self._headers, "Accept": "application/json", "User-Agent": "DevFlow/0.7.0"}
         data = None
         if body is not None:
             data = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -336,3 +340,72 @@ class AzureDevOps:
 
     def pr_web_url(self, pr_id: int) -> str:
         return self.project_url + "/_git/" + urllib.parse.quote(self.repo, safe="") + "/pullrequest/" + str(pr_id)
+
+    # --- CI/CD: operações somente leitura (Azure DevOps REST 7.1). ---
+    def list_pipelines(self, *, limit: int = 100) -> list[dict]:
+        from .ci import checked_limit
+        checked_limit(limit)
+        result = self.request("GET", "_apis/pipelines", params={"$top": limit})
+        return result.get("value", [])[:limit]
+
+    def list_builds(self, *, limit: int = 20, pipeline_id: int | None = None,
+                    failed: bool = False) -> list[dict]:
+        from .ci import checked_limit
+        checked_limit(limit, maximum=200)
+        params = {"$top": limit, "queryOrder": "queueTimeDescending"}
+        if pipeline_id is not None:
+            if pipeline_id <= 0:
+                raise DevError("O ID da pipeline deve ser positivo.")
+            params["definitions"] = pipeline_id
+        if failed:
+            params["resultFilter"] = "failed"
+        result = self.request("GET", "_apis/build/builds", params=params)
+        return result.get("value", [])[:limit]
+
+    def get_build(self, build_id: int) -> dict:
+        if build_id <= 0:
+            raise DevError("O ID do build deve ser positivo.")
+        return self.request("GET", f"_apis/build/builds/{build_id}")
+
+    def build_timeline(self, build_id: int) -> dict:
+        if build_id <= 0:
+            raise DevError("O ID do build deve ser positivo.")
+        return self.request("GET", f"_apis/build/builds/{build_id}/timeline")
+
+    def list_runs(self, pipeline_id: int, *, limit: int = 10) -> list[dict]:
+        from .ci import checked_limit
+        if pipeline_id <= 0:
+            raise DevError("O ID da pipeline deve ser positivo.")
+        checked_limit(limit)
+        # A API Runs/List não oferece $top; limitada a 10 mil execuções pelo serviço.
+        data = self.request("GET", f"_apis/pipelines/{pipeline_id}/runs")
+        runs = data.get("value", [])
+        return sorted(runs, key=lambda r: r.get("createdDate") or "", reverse=True)[:limit]
+
+    def get_run(self, pipeline_id: int, run_id: int) -> dict:
+        if pipeline_id <= 0 or run_id <= 0:
+            raise DevError("Os IDs de pipeline e execução devem ser positivos.")
+        return self.request("GET", f"_apis/pipelines/{pipeline_id}/runs/{run_id}")
+
+    def list_environments(self, *, limit: int = 100) -> list[dict]:
+        from .ci import checked_limit
+        checked_limit(limit)
+        result = self.request("GET", "_apis/distributedtask/environments", params={"$top": limit})
+        return result.get("value", [])[:limit]
+
+    def list_environment_deployments(self, environment_id: int, *, limit: int = 20) -> list[dict]:
+        from .ci import checked_limit
+        if environment_id <= 0:
+            raise DevError("O ID do ambiente deve ser positivo.")
+        checked_limit(limit)
+        path = f"_apis/distributedtask/environments/{environment_id}/environmentdeploymentrecords"
+        result = self.request("GET", path, params={"top": limit})
+        # Algumas implementações usam envelope value, outras retornam array direto.
+        return (result.get("value", []) if isinstance(result, dict) else result)[:limit]
+
+    def list_classic_deployments(self, *, limit: int = 20) -> list[dict]:
+        from .ci import checked_limit
+        checked_limit(limit)
+        return self.request("GET", "_apis/release/deployments",
+                            params={"$top": limit, "queryOrder": "descending"},
+                            release=True).get("value", [])[:limit]

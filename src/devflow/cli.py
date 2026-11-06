@@ -16,6 +16,11 @@ from .core import (
     scheduled_day, short_assignee, truncate,
 )
 from . import gitops as g
+from .ci import (
+    checked_limit, normalize_classic_deploy, normalize_yaml_deploy,
+    pipeline_summary, print_pipelines, print_builds, print_runs, print_run_detail,
+    print_deploys, timeline_summary, web_url,
+)
 
 
 BACKLOG_TYPES = {
@@ -72,6 +77,39 @@ def parser_build() -> argparse.ArgumentParser:
     s = sub.add_parser("pr", help="Mostrar detalhes, revisores e Work Items vinculados à PR")
     s.add_argument("id", type=int)
     s.add_argument("--json", action="store_true", help="Exibir resultado JSON")
+
+    # Observabilidade read-only de CI/CD (REST API Azure DevOps 7.1).
+    s = sub.add_parser("pipelines", help="Listar pipelines e últimos builds conhecidos")
+    s.add_argument("--limit", type=int, default=50, help="Máximo de pipelines [50; até 100]")
+    s.add_argument("--sample", type=int, default=200, help="Quantidade de builds analisados [200; até 200]")
+    s.add_argument("--json", action="store_true", help="Saída JSON resumida")
+
+    s = sub.add_parser("builds", help="Listar builds/execuções CI do projeto")
+    s.add_argument("--pipeline", type=int, metavar="ID", help="Filtrar pelo ID da pipeline")
+    s.add_argument("--failed", action="store_true", help="Somente builds que falharam")
+    s.add_argument("--limit", type=int, default=20, help="Quantidade de builds [20; até 200]")
+    s.add_argument("--json", action="store_true", help="Saída JSON resumida")
+
+    s = sub.add_parser("build", help="Mostrar detalhes de um build, seus stages e falhas")
+    s.add_argument("id", type=int)
+    s.add_argument("--json", action="store_true", help="Saída JSON resumida")
+
+    s = sub.add_parser("runs", help="Listar execuções de uma pipeline")
+    s.add_argument("pipeline_id", type=int, metavar="PIPELINE_ID")
+    s.add_argument("--limit", type=int, default=10, help="Últimas execuções [10; até 100]")
+    s.add_argument("--json", action="store_true", help="Saída JSON resumida")
+
+    s = sub.add_parser("run", help="Mostrar status e falhas de uma execução de pipeline")
+    s.add_argument("pipeline_id", type=int, metavar="PIPELINE_ID")
+    s.add_argument("run_id", type=int, metavar="RUN_ID")
+    s.add_argument("--json", action="store_true", help="Saída JSON resumida")
+
+    s = sub.add_parser("deploys", help="Consultar deploys YAML Environments e Classic Releases")
+    s.add_argument("--source", choices=("all", "yaml", "classic"), default="all",
+                   help="Tipo de deploy [all]")
+    s.add_argument("--environment", metavar="NOME", help="Filtrar pelo nome do ambiente")
+    s.add_argument("--limit", type=int, default=20, help="Quantidade de deploys [20; até 100]")
+    s.add_argument("--json", action="store_true", help="Saída JSON resumida")
 
     s = sub.add_parser("sprint", help="Mostrar Sprint atual, Tasks, responsáveis e progresso")
     s.add_argument("--team", help="Nome da equipe do Azure Boards (padrão: equipe principal)")
@@ -507,6 +545,138 @@ def run(argv: list[str] | None = None) -> int:
                              ensure_ascii=False, indent=2))
         else:
             show_pr(ado, args.id)
+        return 0
+    if args.action == "pipelines":
+        checked_limit(args.limit)
+        checked_limit(args.sample, maximum=200)
+        pipelines = ado.list_pipelines(limit=args.limit)
+        sample = ado.list_builds(limit=args.sample) if pipelines else []
+        summary = pipeline_summary(pipelines, sample)
+        if args.json:
+            # Exibe apenas dados operacionais; não imprime payloads API brutos.
+            payload = [{"id": i["id"], "name": i["name"], "folder": i["folder"],
+                        "recentBuild": ({"id": i["recentBuild"].get("id"),
+                                        "status": i["recentBuild"].get("status"),
+                                        "result": i["recentBuild"].get("result")}
+                                       if i["recentBuild"] else None)} for i in summary]
+            print(json.dumps({"sampleSize": len(sample), "pipelines": payload}, ensure_ascii=False, indent=2))
+        else:
+            print_pipelines(pipelines, sample, sample=len(sample))
+        return 0
+    if args.action == "builds":
+        builds = ado.list_builds(limit=args.limit, pipeline_id=args.pipeline, failed=args.failed)
+        if args.json:
+            payload = [{"id": b.get("id"), "pipeline": (b.get("definition") or {}).get("name"),
+                        "pipelineId": (b.get("definition") or {}).get("id"),
+                        "status": b.get("status"), "result": b.get("result"),
+                        "branch": b.get("sourceBranch"), "startTime": b.get("startTime"),
+                        "finishTime": b.get("finishTime"), "webUrl": web_url(b)} for b in builds]
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print_builds(builds)
+        return 0
+    if args.action == "build":
+        build = ado.get_build(args.id)
+        # Em caso de erro de permissão/timeline indisponível, preserva dados do build.
+        warning = None
+        try:
+            timeline = ado.build_timeline(args.id)
+        except DevError as exc:
+            timeline = None
+            warning = str(exc)
+        as_run = {"id": build.get("id"),
+                  "pipeline": {"id": (build.get("definition") or {}).get("id")},
+                  "name": build.get("buildNumber") or build.get("id"),
+                  "state": build.get("status"), "result": build.get("result"),
+                  "createdDate": build.get("startTime") or build.get("queueTime"),
+                  "finishedDate": build.get("finishTime"), "_links": build.get("_links")}
+        if args.json:
+            print(json.dumps({"build": {"id": build.get("id"), "pipelineId": (build.get("definition") or {}).get("id"),
+                                        "pipeline": (build.get("definition") or {}).get("name"),
+                                        "status": build.get("status"), "result": build.get("result"),
+                                        "branch": build.get("sourceBranch"), "webUrl": web_url(build)},
+                              "timeline": timeline_summary(timeline) if timeline is not None else None,
+                              "warning": warning}, ensure_ascii=False, indent=2))
+        else:
+            print_run_detail(as_run, timeline)
+            if warning:
+                print("AVISO: não foi possível consultar a timeline: " + warning, file=sys.stderr)
+        return 0
+    if args.action == "runs":
+        runs = ado.list_runs(args.pipeline_id, limit=args.limit)
+        if args.json:
+            payload = [{"id": r.get("id"), "name": r.get("name"), "state": r.get("state"),
+                        "result": r.get("result"), "createdDate": r.get("createdDate"),
+                        "finishedDate": r.get("finishedDate"), "webUrl": web_url(r)} for r in runs]
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print_runs(args.pipeline_id, runs)
+        return 0
+    if args.action == "run":
+        pipeline_run = ado.get_run(args.pipeline_id, args.run_id)
+        warning = None
+        try:
+            timeline = ado.build_timeline(args.run_id)
+        except DevError as exc:
+            timeline = None
+            warning = str(exc)
+        if args.json:
+            print(json.dumps({"run": {"id": pipeline_run.get("id"),
+                                      "name": pipeline_run.get("name"),
+                                      "pipelineId": (pipeline_run.get("pipeline") or {}).get("id"),
+                                      "state": pipeline_run.get("state"), "result": pipeline_run.get("result"),
+                                      "createdDate": pipeline_run.get("createdDate"),
+                                      "finishedDate": pipeline_run.get("finishedDate"),
+                                      "webUrl": web_url(pipeline_run)},
+                              "timeline": timeline_summary(timeline) if timeline is not None else None,
+                              "warning": warning}, ensure_ascii=False, indent=2))
+        else:
+            print_run_detail(pipeline_run, timeline)
+            if warning:
+                print("AVISO: timeline indisponível (execução pode não corresponder a um build): " + warning,
+                      file=sys.stderr)
+        return 0
+    if args.action == "deploys":
+        checked_limit(args.limit)
+        all_deploys = []
+        errors = []
+        successful_sources = 0
+        filter_name = (args.environment or "").casefold()
+        if args.source in {"all", "yaml"}:
+            try:
+                environments = ado.list_environments(limit=100)
+                if filter_name:
+                    environments = [e for e in environments if filter_name in str(e.get("name") or "").casefold()]
+                # Limita consultas por ambiente. Sem prometer varredura completa da organização.
+                for env in environments[:30]:
+                    try:
+                        history = ado.list_environment_deployments(int(env["id"]), limit=min(100, args.limit))
+                        all_deploys.extend(normalize_yaml_deploy(env, history))
+                    except DevError as exc:
+                        errors.append(f"Ambiente YAML {env.get('name', env.get('id'))}: {exc}")
+                if len(environments) > 30:
+                    errors.append("Consulta limitada aos 30 primeiros ambientes; use --environment para filtrar.")
+                successful_sources += 1
+            except DevError as exc:
+                errors.append("YAML Environments: " + str(exc))
+        if args.source in {"all", "classic"}:
+            try:
+                classic = normalize_classic_deploy(ado.list_classic_deployments(limit=args.limit))
+                if filter_name:
+                    classic = [d for d in classic if filter_name in str(d.get("environment", "")).casefold()]
+                all_deploys.extend(classic)
+                successful_sources += 1
+            except DevError as exc:
+                errors.append("Classic Releases: " + str(exc))
+        if successful_sources == 0:
+            raise DevError("Não foi possível consultar nenhuma fonte de deploy. " + "; ".join(errors))
+        # Não confunde "nenhuma implantação" com falha parcial da API.
+        all_deploys.sort(key=lambda d: d.get("startTime") or "", reverse=True)
+        all_deploys = all_deploys[:args.limit]
+        if args.json:
+            print(json.dumps({"deployments": all_deploys, "warnings": errors}, ensure_ascii=False, indent=2))
+        else:
+            print_deploys(all_deploys, source=args.source, errors=errors)
         return 0
     if args.action == "sprint":
         team = args.team

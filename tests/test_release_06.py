@@ -20,7 +20,7 @@ def work_item(wid, typ="Task", status="To Do", parent=False, assigned=None, proj
 
 class Release06Tests(unittest.TestCase):
     def test_version_and_flags(self):
-        self.assertEqual(__version__, "0.6.0")
+        self.assertEqual(__version__, "0.7.0")
         parser = parser_build()
         self.assertEqual(parser.parse_args(["new", "Criar login", "--parent", "5"]).parent, 5)
         self.assertTrue(parser.parse_args(["claim", "7", "--yes"]).yes)

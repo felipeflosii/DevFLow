@@ -22,7 +22,7 @@ def item(i, typ="Task", state="To Do", title="Teste", assigned="Luiz Felipe", pa
 class CliTests(unittest.TestCase):
     def test_version_and_parser(self):
         from devflow import __version__
-        self.assertEqual(__version__, "0.6.0")
+        self.assertEqual(__version__, "0.7.0")
         parsed = parser_build().parse_args(["tasks"])
         self.assertFalse(parsed.all)
         self.assertFalse(parsed.mine)

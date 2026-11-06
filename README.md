@@ -1,10 +1,10 @@
 # DevFlow CLI — Azure Boards + Azure Repos + Git
 
-**Versão 0.6.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
+**Versão 0.7.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
 
 O DevFlow permite consultar as Tasks do Azure Boards pelo terminal, iniciar branches associadas ao ID da Task e criar commits e Pull Requests rastreáveis no Azure Repos. **O GitHub hospeda o código deste programa; as integrações Git de trabalho são exclusivamente com Azure Repos.**
 
-## Novidades da v0.6.0
+## Funcionalidade da v0.4.1
 
 - **`dev finish` agora retorna automaticamente à branch principal** após enviar os commits, criar a PR e tentar vinculá-la ao Azure Boards. O retorno executa `git fetch <remote> --prune` e `git switch <base>` (por padrão `origin` e `main`).
 - **A Pull Request continua aberta**, sem merge automático nem alterações no histórico da `main` local.
@@ -49,8 +49,8 @@ Requer **Python 3.10+**, Git, `pipx` (recomendado) e, para autenticação no Azu
 **Linux/macOS (instalação local a partir do ZIP):**
 
 ```bash
-unzip devflow-cli-v0.6.0.zip
-cd devflow-cli-v0.6.0
+unzip devflow-cli-v0.7.0.zip
+cd devflow-cli-v0.7.0
 pipx install --force .
 dev --version
 ```
@@ -68,7 +68,7 @@ dev --version
 pipx install --force git+https://github.com/felipeflosii/devflow-cli.git
 ```
 
-Os scripts `install.sh` e `install.ps1` fazem a instalação a partir do GitHub (após publicar o código da versão v0.6.0). Instalam na conta do usuário, sem `sudo`.
+Os scripts `install.sh` e `install.ps1` fazem a instalação a partir do GitHub (após publicar o código da versão v0.7.0). Instalam na conta do usuário, sem `sudo`.
 
 ## Primeira configuração
 
@@ -150,7 +150,7 @@ Todos os testes são locais, sem chamadas reais ao Azure DevOps. Consulte [`CHAN
 **Licença MIT — Projeto independente, não oficial da Microsoft.**
 
 
-## Novidades da v0.6.0 — Pull Requests e atualização da main
+## Novidades da v0.5.0 — Pull Requests e atualização da main
 
 ```bash
 dev prs                     # PRs ativas do repositório
@@ -194,3 +194,61 @@ criar e adiciona o vínculo no mesmo pedido de criação do Work Item.
 
 O parâmetro `--team` é opcional; sem ele o Azure DevOps utiliza a equipe padrão
 do projeto. Configurações da v0.4.x/v0.5.x continuam válidas e não precisam ser refeitas.
+
+
+## Novidades da v0.7.0 — Monitoramento de CI/CD
+
+Os novos comandos são **somente leitura**: não executam pipelines, não fazem deploy, não
+aprovam releases e não alteram configurações. Funcionam em repositórios Azure Repos
+configurados anteriormente com `dev init`, sem migração de configuração.
+
+| Comando | Finalidade |
+|---|---|
+| `dev pipelines` | Lista as pipelines do projeto e builds recentes conhecidos |
+| `dev pipelines --limit 20 --sample 100` | Controla o tamanho da consulta |
+| `dev builds` | Lista builds de todas as pipelines, com estado, branch e duração |
+| `dev builds --pipeline 9` | Limita os builds à pipeline de ID 9 |
+| `dev builds --failed` | Exibe builds cujo resultado foi falha |
+| `dev build 81` | Exibe detalhes do build #81, stages e tarefas que falharam |
+| `dev runs 9` | Lista execuções da pipeline #9 |
+| `dev run 9 81` | Exibe detalhes da execução #81 e sua timeline, quando disponível |
+| `dev deploys` | Consulta deploys de Azure YAML Environments **e** Classic Releases |
+| `dev deploys --source yaml` | Consulta somente Azure Environments de pipelines YAML |
+| `dev deploys --source classic` | Consulta somente Classic Release deployments |
+| `dev deploys --environment 'produção'` | Filtra pelo nome do ambiente |
+
+O parâmetro `--json` funciona em todos os comandos acima para automações.
+Os JSONs exibem **campos operacionais resumidos**, sem retornar todas as variáveis,
+segredos ou parâmetros brutos das APIs. **Não mostra conteúdo integral de logs**:
+`dev build` e `dev run` exibem nome, status e mensagens de erro reportadas na
+*timeline* da execução. Mensagens de erro podem conter detalhes operacionais;
+revise antes de compartilhá-las.
+
+### Sobre o escopo dos dados
+
+- **`dev pipelines`:** cruza as pipelines com uma *amostra dos últimos 200 builds*
+  do projeto (ajustável com `--sample`). Se um pipeline aparecer sem último build,
+  isso **não comprova** que nunca foi executado.
+- **`dev runs`:** consulta a API de execuções da pipeline selecionada e exibe até
+  10 por padrão. É possível aumentar com `--limit` até 100.
+- **`dev run`/`dev build`:** a timeline é consultada através da Build API.
+  Quando não estiver disponível (por exemplo, falta de permissão ou execução
+  incompatível), apresenta aviso e mantém os dados principais.
+- **`dev deploys`:** consulta apenas deploys rastreados em *YAML Environments*
+  e *Classic Releases*. Não detecta deployments feitos fora do Azure DevOps,
+  como deploys manuais via Azure CLI. Para limitar consumo de API, a leitura YAML
+  usa até 30 ambientes e os registros recentes de cada um. Use `--environment`
+  para restringir a consulta.
+- **Permissões:** comandos de build/pipeline normalmente exigem acesso de leitura
+  de build (`vso.build`); YAML Environments requer acesso ao ambiente
+  (`vso.environment_manage`) e Classic Releases exige acesso a releases
+  (`vso.release`). A disponibilidade depende de sua conta/organização.
+- Os comandos **não monitoram continuamente** mudanças; cada invocação consulta
+  o estado naquele momento. Não existe agendamento implícito.
+
+Referências oficiais (REST API Azure DevOps 7.1):
+- [Pipelines — List](https://learn.microsoft.com/en-us/rest/api/azure/devops/pipelines/pipelines/list?view=azure-devops-rest-7.1)
+- [Builds — List](https://learn.microsoft.com/en-us/rest/api/azure/devops/build/builds/list?view=azure-devops-rest-7.1)
+- [Build Timeline — Get](https://learn.microsoft.com/en-us/rest/api/azure/devops/build/timeline/get?view=azure-devops-rest-7.1)
+- [Environment deployment records — List](https://learn.microsoft.com/en-us/rest/api/azure/devops/distributedtask/environmentdeployment-records/list?view=azure-devops-rest-7.1)
+- [Classic Release deployments — List](https://learn.microsoft.com/en-us/rest/api/azure/devops/release/deployments/list?view=azure-devops-rest-7.1)

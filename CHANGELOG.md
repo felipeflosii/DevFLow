@@ -1,3 +1,13 @@
+## v0.7.0 — Monitoramento de CI/CD (2026-11-06)
+- `dev pipelines`: lista pipelines e cruza os últimos builds conhecidos por ID.
+- `dev builds [--pipeline ID] [--failed]`: consulta builds, estados, duração e branches.
+- `dev build ID`: mostra timeline de stages, jobs e tarefas com falhas.
+- `dev runs PIPELINE_ID`, `dev run PIPELINE_ID RUN_ID`: consulta execuções de pipelines.
+- `dev deploys [--source all|yaml|classic] [--environment NOME]`: consulta implantações dos Azure Environments e Classic Releases.
+- Novos comandos suportam `--json` resumido, com foco em dados operacionais.
+- Operações CI/CD são estritamente somente leitura e toleram falhas parciais de fontes de deploy.
+- Compatibilidade com os comandos das versões anteriores.
+
 ## v0.6.0 — Gerenciamento de Sprints e Work Items
 - `dev sprint [--team] [--all] [--json]` lista iterações e progresso das Tasks atuais.
 - `dev claim ID [--yes]` atribui Tasks livres com confirmação e validação de revisão.
