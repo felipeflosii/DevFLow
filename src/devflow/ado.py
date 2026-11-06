@@ -219,6 +219,41 @@ class AzureDevOps:
         }}])
         return True
 
+    def list_prs(self, *, status: str = "active", mine: bool = False, limit: int = 100) -> list[dict]:
+        """Consulta PRs do repositório com paginação (Azure DevOps Git 7.1)."""
+        if status not in {"active", "completed", "abandoned", "all"}:
+            raise DevError("Estado de PR inválido: active, completed, abandoned ou all.")
+        if not 1 <= limit <= 500:
+            raise DevError("O limite de PRs deve ficar entre 1 e 500.")
+        path = f"_apis/git/repositories/{urllib.parse.quote(self.repo, safe='')}/pullrequests"
+        filters = {"searchCriteria.status": status}
+        if mine:
+            user_id = self.identity().get("id")
+            if not user_id:
+                raise DevError("Não foi possível identificar a conta para filtrar minhas PRs.")
+            filters["searchCriteria.creatorId"] = user_id
+        results: list[dict] = []
+        while len(results) < limit:
+            page_size = min(100, limit - len(results))
+            params = {**filters, "$skip": len(results), "$top": page_size}
+            page = self.request("GET", path, params=params).get("value", [])
+            results.extend(page)
+            if len(page) < page_size:
+                break
+        return results[:limit]
+
+    def get_pr(self, pr_id: int) -> dict:
+        if pr_id <= 0:
+            raise DevError("O ID da Pull Request deve ser positivo.")
+        path = f"_apis/git/repositories/{urllib.parse.quote(self.repo, safe='')}/pullrequests/{pr_id}"
+        return self.request("GET", path, params={"includeWorkItemRefs": "true"})
+
+    def pr_work_items(self, pr_id: int) -> list[int]:
+        if pr_id <= 0:
+            raise DevError("O ID da Pull Request deve ser positivo.")
+        path = f"_apis/git/repositories/{urllib.parse.quote(self.repo, safe='')}/pullRequests/{pr_id}/workitems"
+        return [int(i["id"]) for i in self.request("GET", path).get("value", []) if str(i.get("id", "")).isdigit()]
+
     def active_pr(self, branch: str) -> dict | None:
         path = f"_apis/git/repositories/{urllib.parse.quote(self.repo, safe='')}/pullrequests"
         params = {"searchCriteria.sourceRefName": "refs/heads/" + branch,

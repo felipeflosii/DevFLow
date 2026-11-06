@@ -1,10 +1,10 @@
 # DevFlow CLI — Azure Boards + Azure Repos + Git
 
-**Versão 0.4.1** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
+**Versão 0.5.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
 
 O DevFlow permite consultar as Tasks do Azure Boards pelo terminal, iniciar branches associadas ao ID da Task e criar commits e Pull Requests rastreáveis no Azure Repos. **O GitHub hospeda o código deste programa; as integrações Git de trabalho são exclusivamente com Azure Repos.**
 
-## Novidades da v0.4.1
+## Novidades da v0.5.0
 
 - **`dev finish` agora retorna automaticamente à branch principal** após enviar os commits, criar a PR e tentar vinculá-la ao Azure Boards. O retorno executa `git fetch <remote> --prune` e `git switch <base>` (por padrão `origin` e `main`).
 - **A Pull Request continua aberta**, sem merge automático nem alterações no histórico da `main` local.
@@ -49,8 +49,8 @@ Requer **Python 3.10+**, Git, `pipx` (recomendado) e, para autenticação no Azu
 **Linux/macOS (instalação local a partir do ZIP):**
 
 ```bash
-unzip devflow-cli-v0.4.1.zip
-cd devflow-cli-v0.4.1
+unzip devflow-cli-v0.5.0.zip
+cd devflow-cli-v0.5.0
 pipx install --force .
 dev --version
 ```
@@ -68,7 +68,7 @@ dev --version
 pipx install --force git+https://github.com/felipeflosii/devflow-cli.git
 ```
 
-Os scripts `install.sh` e `install.ps1` fazem a instalação a partir do GitHub (após publicar o código da versão v0.4.1). Instalam na conta do usuário, sem `sudo`.
+Os scripts `install.sh` e `install.ps1` fazem a instalação a partir do GitHub (após publicar o código da versão v0.5.0). Instalam na conta do usuário, sem `sudo`.
 
 ## Primeira configuração
 
@@ -148,3 +148,24 @@ $env:PYTHONPATH='src'; py -m unittest discover -s tests -v
 Todos os testes são locais, sem chamadas reais ao Azure DevOps. Consulte [`CHANGELOG.md`](CHANGELOG.md) para histórico e [`docs/PUBLICAR_NO_GITHUB.md`](docs/PUBLICAR_NO_GITHUB.md) para publicação.
 
 **Licença MIT — Projeto independente, não oficial da Microsoft.**
+
+
+## Novidades da v0.5.0 — Pull Requests e atualização da main
+
+```bash
+dev prs                     # PRs ativas do repositório
+dev prs --mine              # PRs que você criou
+dev prs --all               # Inclui concluídas e abandonadas
+dev prs --status completed  # Somente PRs concluídas
+dev pr 12                   # Detalhes da PR: votos de revisores, merge status, Work Items
+dev main --update           # fetch --prune, switch para a base, merge --ff-only origin/main
+```
+
+`dev main --update` **não** faz merge commit, rebase, reset ou push. Se sua `main`
+local divergir do remoto, o fast-forward falha e nenhuma conciliação é forçada.
+A criação da PR e o `dev finish` continuam sem executar merge da PR.
+
+Para autenticar no Azure Repos, use `az login` com acesso ao Azure DevOps ou
+`ADO_PAT` com permissões de leitura de código (e de Work Items nos comandos que
+consultam Azure Boards). `dev pr` exibe os votos dos revisores, mas não determina
+se todas as políticas de aprovação da branch foram cumpridas.

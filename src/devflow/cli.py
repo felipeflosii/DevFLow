@@ -40,7 +40,8 @@ def parser_build() -> argparse.ArgumentParser:
     sub.add_parser("config", help="Mostrar configuração deste repositório")
     sub.add_parser("doctor", help="Diagnosticar Git, remoto e autenticação")
     sub.add_parser("sync", help="git fetch origin --prune sem mudar de branch")
-    sub.add_parser("main", help="Buscar atualizações remotas e trocar para a branch principal configurada")
+    s = sub.add_parser("main", help="Buscar atualizações remotas e trocar para a branch principal configurada")
+    s.add_argument("--update", action="store_true", help="Avançar a main via fast-forward somente (sem merge commit)")
 
     s = sub.add_parser("tasks", help="Listar somente Tasks (não PBIs), por responsável ou período")
     scope = s.add_mutually_exclusive_group()
@@ -60,6 +61,17 @@ def parser_build() -> argparse.ArgumentParser:
         s.add_argument("--closed", action="store_true", help="Incluir concluídos")
         s.add_argument("--area", metavar="AREA", help="Filtrar por área")
         s.add_argument("--json", action="store_true", help="Saída JSON")
+
+    s = sub.add_parser("prs", help="Listar Pull Requests do repositório Azure Repos")
+    s.add_argument("--status", choices=("active", "completed", "abandoned", "all"), default="active")
+    s.add_argument("--all", action="store_true", help="Incluir PRs concluídas e abandonadas")
+    s.add_argument("--mine", action="store_true", help="Somente PRs criadas por minha conta")
+    s.add_argument("--limit", type=int, default=100, help="Máximo de PRs [100; limite 500]")
+    s.add_argument("--json", action="store_true", help="Exibir resultado JSON")
+
+    s = sub.add_parser("pr", help="Mostrar detalhes, revisores e Work Items vinculados à PR")
+    s.add_argument("id", type=int)
+    s.add_argument("--json", action="store_true", help="Exibir resultado JSON")
 
     s = sub.add_parser("show", help="Exibir os detalhes e a hierarquia Epic > Feature > PBI > Task")
     s.add_argument("id", type=int, help="ID de qualquer Work Item")
@@ -239,6 +251,49 @@ def show_item(ado: AzureDevOps, work_id: int) -> None:
         print("  " * depth + f"{f.get('System.WorkItemType', 'Item')} #{item['id']} — {f.get('System.Title', '')}")
 
 
+def print_prs(ado: AzureDevOps, prs: list[dict], *, status: str) -> None:
+    print(f"\nPull Requests — {status}")
+    print("=" * (16 + len(status)))
+    if not prs:
+        print("Nenhuma Pull Request encontrada.")
+        return
+    rows = []
+    for pr in prs:
+        author = pr.get("createdBy") or {}
+        rows.append([str(pr.get("pullRequestId", "?")), str(pr.get("status", "?")),
+                     truncate(author.get("displayName") or author.get("uniqueName") or "—", 16),
+                     truncate(str(pr.get("sourceRefName", "")).removeprefix("refs/heads/"), 34),
+                     truncate(pr.get("title", ""), 54)])
+    print(render_table(["PR", "Estado", "Autor", "Branch", "Título"], rows))
+    print(f"\nTotal: {len(prs)} PR(s). Use: dev pr <ID>")
+
+
+def show_pr(ado: AzureDevOps, pr_id: int) -> dict:
+    pr = ado.get_pr(pr_id)
+    if not isinstance(pr, dict):
+        raise DevError("Azure DevOps retornou um formato inválido para a PR.")
+    print(f"\nPR #{pr_id} — {pr.get('title', 'Sem título')}")
+    print("Estado:        " + str(pr.get("status", "não informado")))
+    print("Autor:         " + assignee_name({"System.AssignedTo": pr.get("createdBy")}))
+    print("Origem:        " + str(pr.get("sourceRefName", "")).removeprefix("refs/heads/"))
+    print("Destino:       " + str(pr.get("targetRefName", "")).removeprefix("refs/heads/"))
+    print("Merge status:  " + str(pr.get("mergeStatus", "não informado")))
+    print("Rascunho:      " + ("sim" if pr.get("isDraft") else "não"))
+    print("URL:           " + ado.pr_web_url(pr_id))
+    reviewers = pr.get("reviewers") or []
+    if reviewers:
+        names = {10: "aprovou", 5: "aprovou c/ sugestões", 0: "pendente", -5: "aguarda autor", -10: "rejeitou"}
+        print("Revisores:")
+        for reviewer in reviewers:
+            display = reviewer.get("displayName") or reviewer.get("uniqueName") or "Revisor"
+            print(f"  - {display}: {names.get(reviewer.get('vote', 0), 'voto ' + str(reviewer.get('vote')))}")
+    else:
+        print("Revisores:     nenhum informado")
+    linked = ado.pr_work_items(pr_id)
+    print("Work Items:    " + (", ".join(f"#{i}" for i in linked) if linked else "nenhum vinculado"))
+    return {"pullRequest": pr, "workItemIds": linked}
+
+
 def ensure_task(item: dict) -> None:
     typ = str(item.get("fields", {}).get("System.WorkItemType", ""))
     if typ.casefold() != "task":
@@ -365,7 +420,11 @@ def run(argv: list[str] | None = None) -> int:
         config_guard(cfg)
         outcome = g.switch_base(cfg["remote"], cfg["base"])
         print(f"Branch principal {cfg['base']}: {outcome}.")
-        print("Referências remotas atualizadas (fetch --prune). Nenhum pull, merge ou rebase foi executado.")
+        if args.update:
+            g.fast_forward_base(cfg["remote"], cfg["base"])
+            print(f"Branch {cfg['base']} atualizada via fast-forward a partir de {cfg['remote']}/{cfg['base']}.")
+        else:
+            print("Referências remotas atualizadas (fetch --prune). Nenhum pull, merge ou rebase foi executado.")
         return 0
     ado = client(cfg)
     if args.action == "doctor":
@@ -377,6 +436,22 @@ def run(argv: list[str] | None = None) -> int:
         print("Projeto: " + ado.project_id())
         print("Repositório: " + ado.repo_id())
         print("Diagnóstico concluído. Teste 'dev tasks --all'.")
+        return 0
+    if args.action == "prs":
+        status = "all" if args.all else args.status
+        prs = ado.list_prs(status=status, mine=args.mine, limit=args.limit)
+        if args.json:
+            print(json.dumps(prs, ensure_ascii=False, indent=2))
+        else:
+            print_prs(ado, prs, status=status)
+        return 0
+    if args.action == "pr":
+        if args.json:
+            pr = ado.get_pr(args.id)
+            print(json.dumps({"pullRequest": pr, "workItemIds": ado.pr_work_items(args.id)},
+                             ensure_ascii=False, indent=2))
+        else:
+            show_pr(ado, args.id)
         return 0
     if args.action == "tasks":
         items, mode, day = my_tasks(ado, args)

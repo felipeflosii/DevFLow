@@ -75,6 +75,16 @@ def switch_base(remote: str, base: str) -> str:
     return "criada e selecionada a partir do remoto"
 
 
+def fast_forward_base(remote: str, base: str) -> None:
+    """Atualiza apenas por fast-forward após o fetch/switch da base."""
+    require_clean()
+    if branch() != base:
+        raise DevError(f"A branch atual não é {base}. Rode 'dev main' primeiro.")
+    ensure_base(remote, base)
+    # Um histórico divergente provoca erro em vez de merge commit ou rebase.
+    git("merge", "--ff-only", f"{remote}/{base}", capture=False)
+
+
 def switch_task(remote: str, base: str, target_branch: str) -> str:
     """Cria ou retoma branch sem modificar a main local. Retorna a ação."""
     require_clean()

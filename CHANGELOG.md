@@ -1,3 +1,9 @@
+## v0.5.0 — Pull Requests e Git
+- `dev prs` lista PRs do repositório, com filtros por autor/estado e JSON.
+- `dev pr ID` mostra estado, merge status, revisores e Work Items associados.
+- `dev main --update` efetua fast-forward seguro da branch base após `fetch --prune`.
+- Nenhuma operação altera políticas de branch ou faz merge automático de PRs.
+
 # Changelog
 
 ## 0.4.1 — 2026-11-06
