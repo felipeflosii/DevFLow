@@ -1,10 +1,10 @@
 # DevFlow CLI — Azure Boards + Azure Repos + Git
 
-**Versão 0.5.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
+**Versão 0.6.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
 
 O DevFlow permite consultar as Tasks do Azure Boards pelo terminal, iniciar branches associadas ao ID da Task e criar commits e Pull Requests rastreáveis no Azure Repos. **O GitHub hospeda o código deste programa; as integrações Git de trabalho são exclusivamente com Azure Repos.**
 
-## Novidades da v0.5.0
+## Novidades da v0.6.0
 
 - **`dev finish` agora retorna automaticamente à branch principal** após enviar os commits, criar a PR e tentar vinculá-la ao Azure Boards. O retorno executa `git fetch <remote> --prune` e `git switch <base>` (por padrão `origin` e `main`).
 - **A Pull Request continua aberta**, sem merge automático nem alterações no histórico da `main` local.
@@ -49,8 +49,8 @@ Requer **Python 3.10+**, Git, `pipx` (recomendado) e, para autenticação no Azu
 **Linux/macOS (instalação local a partir do ZIP):**
 
 ```bash
-unzip devflow-cli-v0.5.0.zip
-cd devflow-cli-v0.5.0
+unzip devflow-cli-v0.6.0.zip
+cd devflow-cli-v0.6.0
 pipx install --force .
 dev --version
 ```
@@ -68,7 +68,7 @@ dev --version
 pipx install --force git+https://github.com/felipeflosii/devflow-cli.git
 ```
 
-Os scripts `install.sh` e `install.ps1` fazem a instalação a partir do GitHub (após publicar o código da versão v0.5.0). Instalam na conta do usuário, sem `sudo`.
+Os scripts `install.sh` e `install.ps1` fazem a instalação a partir do GitHub (após publicar o código da versão v0.6.0). Instalam na conta do usuário, sem `sudo`.
 
 ## Primeira configuração
 
@@ -150,7 +150,7 @@ Todos os testes são locais, sem chamadas reais ao Azure DevOps. Consulte [`CHAN
 **Licença MIT — Projeto independente, não oficial da Microsoft.**
 
 
-## Novidades da v0.5.0 — Pull Requests e atualização da main
+## Novidades da v0.6.0 — Pull Requests e atualização da main
 
 ```bash
 dev prs                     # PRs ativas do repositório
@@ -169,3 +169,28 @@ Para autenticar no Azure Repos, use `az login` com acesso ao Azure DevOps ou
 `ADO_PAT` com permissões de leitura de código (e de Work Items nos comandos que
 consultam Azure Boards). `dev pr` exibe os votos dos revisores, mas não determina
 se todas as políticas de aprovação da branch foram cumpridas.
+
+
+## Novidades da v0.6.0 — Sprint, atribuição e hierarquia
+
+```bash
+dev sprint                       # Sprint atual: período, progresso e Tasks com responsáveis
+dev sprint --all                 # Todas as Sprints disponíveis na equipe
+dev sprint --team 'Equipe API'   # Selecione a equipe no Azure Boards
+dev claim 14                     # Assumir uma Task disponível (pede confirmação)
+dev claim 14 --yes               # Confirmação explícita sem prompt
+dev new 'Criar script' --parent 5                        # Task vinculada ao PBI #5
+dev new 'Disponibilizar APIs' --type 'Product Backlog Item' --parent 4
+```
+
+A Sprint deve estar associada à equipe no Azure Boards e ter datas definidas.
+O progresso mostrado é a razão entre **Tasks concluídas e Tasks totais** retornadas
+para a Sprint: não é a estimativa de Story Points nem mede horas reais.
+
+`dev claim` só atribui Tasks abertas e sem responsável e usa um teste da
+revisão do item para não sobrescrever silenciosamente mudanças concorrentes.
+Por padrão, pede confirmação. `dev new --parent` valida o tipo do pai antes de
+criar e adiciona o vínculo no mesmo pedido de criação do Work Item.
+
+O parâmetro `--team` é opcional; sem ele o Azure DevOps utiliza a equipe padrão
+do projeto. Configurações da v0.4.x/v0.5.x continuam válidas e não precisam ser refeitas.

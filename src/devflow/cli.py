@@ -11,7 +11,7 @@ from datetime import date
 from . import __version__
 from .ado import AzureDevOps
 from .core import (
-    DevError, ado_remote, assignee_name, branch_for, branch_work_id, filter_items,
+    DevError, ado_remote, assignee_name, branch_for, branch_work_id, filter_items, item_is_open,
     item_type, parent_id, parse_day, read_config, render_table, save_config,
     scheduled_day, short_assignee, truncate,
 )
@@ -73,6 +73,15 @@ def parser_build() -> argparse.ArgumentParser:
     s.add_argument("id", type=int)
     s.add_argument("--json", action="store_true", help="Exibir resultado JSON")
 
+    s = sub.add_parser("sprint", help="Mostrar Sprint atual, Tasks, responsáveis e progresso")
+    s.add_argument("--team", help="Nome da equipe do Azure Boards (padrão: equipe principal)")
+    s.add_argument("--all", action="store_true", help="Listar todas as Sprints configuradas para a equipe")
+    s.add_argument("--json", action="store_true", help="Exibir resultado JSON")
+
+    s = sub.add_parser("claim", help="Assumir uma Task não atribuída, mediante confirmação")
+    s.add_argument("id", type=int)
+    s.add_argument("--yes", action="store_true", help="Confirmar atribuição sem perguntar")
+
     s = sub.add_parser("show", help="Exibir os detalhes e a hierarquia Epic > Feature > PBI > Task")
     s.add_argument("id", type=int, help="ID de qualquer Work Item")
 
@@ -88,6 +97,7 @@ def parser_build() -> argparse.ArgumentParser:
     s.add_argument("--assign", metavar="EMAIL", help="Usuário do Azure Boards")
     s.add_argument("--date", metavar="AAAA-MM-DD", help="Data planejada")
     s.add_argument("--type", default="Task", help="Tipo Azure Boards, ex.: Task, Bug")
+    s.add_argument("--parent", type=int, metavar="ID", help="ID do Work Item pai (PBI/Feature/Epic)")
 
     s = sub.add_parser("plan", help="Planejar uma ou mais Tasks com tag devday:AAAA-MM-DD")
     s.add_argument("ids", metavar="ID", type=int, nargs="+")
@@ -249,6 +259,51 @@ def show_item(ado: AzureDevOps, work_id: int) -> None:
     for depth, item in enumerate(reversed(lineage)):
         f = item.get("fields", {})
         print("  " * depth + f"{f.get('System.WorkItemType', 'Item')} #{item['id']} — {f.get('System.Title', '')}")
+
+
+def sprint_status(itr: dict, today: date) -> str:
+    attrs = itr.get("attributes") or {}
+    start = attrs.get("startDate")
+    finish = attrs.get("finishDate")
+    if start and finish:
+        try:
+            beginning, end = date.fromisoformat(start[:10]), date.fromisoformat(finish[:10])
+            return "Atual" if beginning <= today <= end else ("Futura" if today < beginning else "Encerrada")
+        except ValueError:
+            pass
+    return "Atual" if str(attrs.get("timeFrame", "")).casefold() == "current" else "Sem data"
+
+
+def sprint_summary(ado: AzureDevOps, iteration: dict, *, team: str | None = None) -> dict:
+    items = ado.sprint_work_items(str(iteration["id"]), team=team)
+    tasks = sorted((i for i in items if item_type(i) == "task"), key=lambda i: i["id"])
+    completed = sum(1 for i in tasks if not item_is_open(i))
+    return {"iteration": iteration, "tasks": tasks, "total": len(tasks), "completed": completed,
+            "percent": round((completed / len(tasks)) * 100) if tasks else 0}
+
+
+def show_sprint(summary: dict) -> None:
+    itr = summary["iteration"]
+    attrs = itr.get("attributes") or {}
+    print("\nSprint: " + str(itr.get("name", "sem nome")))
+    print("Caminho: " + str(itr.get("path", "não informado")))
+    print("Início:  " + str(attrs.get("startDate") or "não definido")[:10])
+    print("Fim:     " + str(attrs.get("finishDate") or "não definido")[:10])
+    print(f"Progresso das Tasks: {summary['completed']}/{summary['total']} concluídas ({summary['percent']}%)")
+    if not summary["tasks"]:
+        print("Nenhuma Task encontrada nesta Sprint.")
+        return
+    rows = [[str(x["id"]), truncate(x.get("fields", {}).get("System.State", ""), 16),
+             short_assignee(x.get("fields", {})), truncate(x.get("fields", {}).get("System.Title", ""), 60)]
+            for x in summary["tasks"]]
+    print(render_table(["ID", "Estado", "Responsável", "Título"], rows))
+
+
+def pick_current_sprint(iterations: list[dict], today: date) -> dict | None:
+    for iteration in iterations:
+        if sprint_status(iteration, today) == "Atual":
+            return iteration
+    return None
 
 
 def print_prs(ado: AzureDevOps, prs: list[dict], *, status: str) -> None:
@@ -453,6 +508,56 @@ def run(argv: list[str] | None = None) -> int:
         else:
             show_pr(ado, args.id)
         return 0
+    if args.action == "sprint":
+        team = args.team
+        iterations = ado.team_iterations(team=team, current=not args.all)
+        if args.all:
+            if args.json:
+                print(json.dumps(iterations, ensure_ascii=False, indent=2))
+            elif not iterations:
+                print("Nenhuma Sprint configurada para esta equipe no Azure Boards.")
+            else:
+                print("\nSprints da equipe:")
+                rows = []
+                for itr in iterations:
+                    attrs = itr.get("attributes") or {}
+                    rows.append([str(itr.get("name", "")), str(attrs.get("startDate") or "—")[:10],
+                                 str(attrs.get("finishDate") or "—")[:10],
+                                 sprint_status(itr, date.today())])
+                print(render_table(["Sprint", "Início", "Fim", "Situação"], rows))
+            return 0
+        chosen = pick_current_sprint(iterations, date.today())
+        if chosen is None and len(iterations) == 1:
+            # A resposta filtrada como current já foi validada pelo serviço,
+            # mesmo que os metadados de data estejam incompletos.
+            chosen = iterations[0]
+        if chosen is None:
+            # Se não houver uma Sprint retornada pelo timeframe atual, a equipe
+            # pode estar configurada sem datas ou fora do intervalo vigente.
+            chosen = pick_current_sprint(ado.team_iterations(team=team), date.today())
+        if chosen is None:
+            raise DevError("Nenhuma Sprint atual encontrada. Verifique datas e iterações da equipe "
+                           "em Project settings > Teams > Iterations. Use 'dev sprint --all'.")
+        summary = sprint_summary(ado, chosen, team=team)
+        if args.json:
+            print(json.dumps(summary, ensure_ascii=False, indent=2))
+        else:
+            show_sprint(summary)
+        return 0
+    if args.action == "claim":
+        item = ado.get_item(args.id)
+        ensure_task(item)
+        if not item_is_open(item):
+            raise DevError("A Task já está encerrada.")
+        if item.get("fields", {}).get("System.AssignedTo"):
+            raise DevError(f"Task #{args.id} já possui responsável: {assignee_name(item['fields'])}.")
+        if not args.yes:
+            confirmation = input(f"Assumir Task #{args.id} — {item['fields'].get('System.Title', '')}? [s/N] ").strip().lower()
+            if confirmation not in {"s", "sim", "y", "yes"}:
+                raise DevError("Atribuição cancelada.")
+        ado.claim_task(args.id)
+        print(f"Task #{args.id} atribuída à sua conta. Execute 'dev start {args.id}' para iniciar.")
+        return 0
     if args.action == "tasks":
         items, mode, day = my_tasks(ado, args)
         if args.json:
@@ -511,7 +616,7 @@ def run(argv: list[str] | None = None) -> int:
         return 0
     if args.action == "new":
         day = parse_day(args.date) if args.date else None
-        item = ado.create_item(args.title, item_type=args.type, assign=args.assign, day=day)
+        item = ado.create_item(args.title, item_type=args.type, assign=args.assign, day=day, parent_id=args.parent)
         print(f"Criado {args.type} #{item['id']}: {args.title}")
         print(ado.project_url + f"/_workitems/edit/{item['id']}")
         if not args.assign:

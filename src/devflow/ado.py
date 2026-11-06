@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from .core import DevError, change_plan_tags
+from .core import DevError, change_plan_tags, item_is_open, item_type as work_item_type, assignee_name
 
 _RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798"
 
@@ -167,14 +167,79 @@ class AzureDevOps:
         current = item.get("fields", {})
         return self.update_field(item_id, "System.Tags", change_plan_tags(current, day))
 
-    def create_item(self, title: str, *, item_type: str = "Task", assign: str | None = None, day=None) -> dict:
+    def create_item(self, title: str, *, item_type: str = "Task", assign: str | None = None,
+                    day=None, parent_id: int | None = None) -> dict:
+        if not title.strip():
+            raise DevError("O título do Work Item não pode estar vazio.")
         path = f"_apis/wit/workitems/${urllib.parse.quote(item_type, safe='')}"
-        changes = [{"op": "add", "path": "/fields/System.Title", "value": title}]
+        changes = [{"op": "add", "path": "/fields/System.Title", "value": title.strip()}]
         if assign:
             changes.append({"op": "add", "path": "/fields/System.AssignedTo", "value": assign})
         if day:
             changes.append({"op": "add", "path": "/fields/System.Tags", "value": "devday:" + day.isoformat()})
+        if parent_id is not None:
+            if parent_id <= 0:
+                raise DevError("O ID do Work Item pai deve ser positivo.")
+            parent = self.get_item(parent_id)
+            parent_type = work_item_type(parent)
+            child_type = str(item_type).casefold()
+            hierarchy = {
+                "task": {"product backlog item", "user story", "bug"},
+                "product backlog item": {"feature"}, "user story": {"feature"},
+                "feature": {"epic"},
+            }
+            if child_type in hierarchy and parent_type not in hierarchy[child_type]:
+                choices = ", ".join(sorted(hierarchy[child_type]))
+                raise DevError(f"{item_type} deve ter como pai um destes tipos: {choices}. "
+                               f"O item #{parent_id} é {parent.get('fields', {}).get('System.WorkItemType', 'desconhecido')}.")
+            parent_project = parent.get("fields", {}).get("System.TeamProject")
+            if parent_project and str(parent_project).casefold() != self.project.casefold():
+                raise DevError("Não é permitido vincular Work Items de projetos diferentes.")
+            parent_url = parent.get("url") or f"{self.project_url}/_apis/wit/workitems/{parent_id}"
+            changes.append({"op": "add", "path": "/relations/-", "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse", "url": parent_url,
+                "attributes": {"comment": "Vinculado ao pai pelo DevFlow"}
+            }})
         return self.request("POST", path, body=changes, patch=True)
+
+    def claim_task(self, task_id: int) -> dict:
+        """Assume Task ainda sem responsável, protegendo contra edição concorrente."""
+        if task_id <= 0:
+            raise DevError("O ID da Task deve ser positivo.")
+        item = self.get_item(task_id)
+        if work_item_type(item) != "task":
+            raise DevError(f"Work Item #{task_id} não é uma Task.")
+        if not item_is_open(item):
+            raise DevError(f"Task #{task_id} já foi encerrada.")
+        fields = item.get("fields", {})
+        if fields.get("System.AssignedTo"):
+            raise DevError(f"Task #{task_id} já está atribuída a {assignee_name(fields)}.")
+        user = self.identity()
+        user_name = user.get("uniqueName") or user.get("providerDisplayName")
+        if not user_name:
+            raise DevError("Não foi possível identificar a conta autenticada no Azure Boards.")
+        if "rev" not in item:
+            raise DevError("Azure DevOps não retornou a revisão da Task; atribuição cancelada por segurança.")
+        # Teste otimista de concorrência: se houve alterações na Task, a API recusa o patch.
+        return self.patch_item(task_id, [
+            {"op": "test", "path": "/rev", "value": item["rev"]},
+            {"op": "add", "path": "/fields/System.AssignedTo", "value": user_name},
+        ])
+
+    def team_iterations(self, *, team: str | None = None, current: bool = False) -> list[dict]:
+        prefix = urllib.parse.quote(team, safe="") + "/" if team else ""
+        path = prefix + "_apis/work/teamsettings/iterations"
+        params = {"$timeframe": "current"} if current else None
+        result = self.request("GET", path, params=params)
+        return result.get("value", result.get("values", []))
+
+    def sprint_work_items(self, iteration_id: str, *, team: str | None = None) -> list[dict]:
+        prefix = urllib.parse.quote(team, safe="") + "/" if team else ""
+        path = prefix + "_apis/work/teamsettings/iterations/" + urllib.parse.quote(iteration_id, safe="") + "/workitems"
+        result = self.request("GET", path)
+        relations = result.get("workItemRelations", [])
+        ids = sorted({int(i["target"]["id"]) for i in relations if i.get("target") and str(i["target"].get("id", "")).isdigit()})
+        return self.get_items(ids) if ids else []
 
     def valid_states(self, item_type: str) -> list[str]:
         path = f"_apis/wit/workitemtypes/{urllib.parse.quote(item_type, safe='')}/states"

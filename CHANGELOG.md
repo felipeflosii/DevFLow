@@ -1,3 +1,9 @@
+## v0.6.0 — Gerenciamento de Sprints e Work Items
+- `dev sprint [--team] [--all] [--json]` lista iterações e progresso das Tasks atuais.
+- `dev claim ID [--yes]` atribui Tasks livres com confirmação e validação de revisão.
+- `dev new "Título" --parent ID` cria itens relacionados com vínculo pai-filho.
+- Compatível com comandos e configurações anteriores.
+
 ## v0.5.0 — Pull Requests e Git
 - `dev prs` lista PRs do repositório, com filtros por autor/estado e JSON.
 - `dev pr ID` mostra estado, merge status, revisores e Work Items associados.
