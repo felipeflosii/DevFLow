@@ -22,12 +22,28 @@ def item(i, typ="Task", state="To Do", title="Teste", assigned="Luiz Felipe", pa
 class CliTests(unittest.TestCase):
     def test_version_and_parser(self):
         from devflow import __version__
-        self.assertEqual(__version__, "0.3.0")
+        self.assertEqual(__version__, "0.4.0")
         parsed = parser_build().parse_args(["tasks"])
         self.assertFalse(parsed.all)
         self.assertFalse(parsed.mine)
         self.assertFalse(parsed.today)
         self.assertTrue(parser_build().parse_args(["tasks", "--all"]).all)
+        self.assertEqual(parser_build().parse_args(["main"]).action, "main")
+
+    def test_main_runs_git_flow_without_calling_azure_api(self):
+        from devflow.cli import run
+        from pathlib import Path
+        config = {"org": "Example", "project": "Dev", "repo": "api", "remote": "origin", "base": "main"}
+        output = io.StringIO()
+        with patch("devflow.cli.g.git_root", return_value=Path.cwd()), \
+             patch("devflow.cli.read_config", return_value=config), \
+             patch("devflow.cli.config_guard"), \
+             patch("devflow.cli.g.switch_base", return_value="selecionada") as switch, \
+             patch("devflow.cli.client") as client, redirect_stdout(output):
+            self.assertEqual(run(["main"]), 0)
+        switch.assert_called_once_with("origin", "main")
+        client.assert_not_called()
+        self.assertIn("Nenhum pull", output.getvalue())
 
     def test_default_is_all_my_open_tasks_even_without_dates(self):
         ado = MagicMock()

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — 2026-11-06
+
+### Adicionado
+- `dev main`: executa `git fetch origin --prune` e troca para a `main` local (ou a branch base configurada).
+- Criação com tracking da branch principal local quando só existir no remoto.
+- Verificação de alterações locais antes da troca de branch.
+
+### Mantido
+- `dev sync` continua buscando referências sem trocar de branch.
+- Nenhuma atualização automática dos commits da branch local; `git pull --ff-only origin main` permanece explícito.
+- Recursos da v0.3.0, incluindo Tasks da equipe, PBI e hierarquia.
+
 ## 0.3.0 — 2026-11-05
 
 ### Adicionado

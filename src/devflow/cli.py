@@ -39,7 +39,8 @@ def parser_build() -> argparse.ArgumentParser:
 
     sub.add_parser("config", help="Mostrar configuração deste repositório")
     sub.add_parser("doctor", help="Diagnosticar Git, remoto e autenticação")
-    sub.add_parser("sync", help="git fetch --prune sem modificar arquivos locais")
+    sub.add_parser("sync", help="git fetch origin --prune sem mudar de branch")
+    sub.add_parser("main", help="Buscar atualizações remotas e trocar para a branch principal configurada")
 
     s = sub.add_parser("tasks", help="Listar somente Tasks (não PBIs), por responsável ou período")
     scope = s.add_mutually_exclusive_group()
@@ -348,6 +349,12 @@ def run(argv: list[str] | None = None) -> int:
         config_guard(cfg)
         g.sync(cfg["remote"])
         print("Referências atualizadas. Nenhuma branch local sofreu merge/rebase/reset.")
+        return 0
+    if args.action == "main":
+        config_guard(cfg)
+        outcome = g.switch_base(cfg["remote"], cfg["base"])
+        print(f"Branch principal {cfg['base']}: {outcome}.")
+        print("Referências remotas atualizadas (fetch --prune). Nenhum pull, merge ou rebase foi executado.")
         return 0
     ado = client(cfg)
     if args.action == "doctor":

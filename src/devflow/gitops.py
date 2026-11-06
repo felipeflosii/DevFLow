@@ -47,12 +47,32 @@ def remote_url(remote: str) -> str:
 
 
 def sync(remote: str) -> None:
-    git("fetch", "--prune", remote, capture=False)
+    git("fetch", remote, "--prune", capture=False)
 
 
 def ensure_base(remote: str, base: str) -> None:
     if not ref_exists(f"refs/remotes/{remote}/{base}"):
         raise DevError(f"Não encontrei {remote}/{base}. Verifique branch principal e permissão ao repositório.")
+
+
+def switch_base(remote: str, base: str) -> str:
+    """Busca o remoto e muda para a branch principal sem modificar commits.
+
+    - Nunca descarta alterações locais.
+    - Se a branch local já existir, apenas muda para ela.
+    - Se não existir, cria a branch local rastreando o remoto existente.
+    - Não executa pull, merge ou rebase.
+    """
+    require_clean()
+    sync(remote)
+    ensure_base(remote, base)
+    if branch() == base:
+        return "já selecionada"
+    if ref_exists(f"refs/heads/{base}"):
+        git("switch", base, capture=False)
+        return "selecionada"
+    git("switch", "--track", "-c", base, f"{remote}/{base}", capture=False)
+    return "criada e selecionada a partir do remoto"
 
 
 def switch_task(remote: str, base: str, target_branch: str) -> str:

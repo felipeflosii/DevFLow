@@ -1,10 +1,17 @@
 # DevFlow CLI — Azure Boards + Azure Repos + Git
 
-**Versão 0.3.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
+**Versão 0.4.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
 
 O DevFlow permite consultar as Tasks do Azure Boards pelo terminal, iniciar branches associadas ao ID da Task e criar commits e Pull Requests rastreáveis no Azure Repos. **O GitHub hospeda o código deste programa; as integrações Git de trabalho são exclusivamente com Azure Repos.**
 
-## Novidades da v0.3.0
+## Novidades da v0.4.0
+
+- **Novo `dev main`**: executa `git fetch origin --prune` e depois `git switch main`, usando os nomes de remote e branch base configurados em `dev init` (origin/main por padrão).
+- Impede a troca de branch quando há modificações locais não salvas. Se a branch principal já existir localmente, utiliza essa branch (sem recriá-la); caso não exista, cria uma branch local rastreando a principal remota.
+- **Sem `pull` automático**: atualizar as referências de `origin/main` não avança a `main` local. Para atualizá-la, execute explicitamente `git pull --ff-only origin main` após `dev main`.
+- `dev sync` continua disponível para somente buscar as referências do remoto, mantendo a branch atual.
+
+## Melhorias da v0.3.0
 
 - `dev tasks` agora lista **todas as suas Tasks abertas**, mesmo sem data planejada. Não é necessário editar Due Date ou planejar tags para que apareçam.
 - `dev tasks --all` lista **todas as Tasks abertas do projeto**, inclusive de outros membros e sem responsável. Exibe coluna **Responsável** abreviada (ex.: `Luiz F.`) e **PBI** pai (`#5`).
@@ -36,8 +43,8 @@ Requer **Python 3.10+**, Git, `pipx` (recomendado) e, para autenticação no Azu
 **Linux/macOS (instalação local a partir do ZIP):**
 
 ```bash
-unzip devflow-cli-v0.3.0.zip
-cd devflow-cli-v0.3.0
+unzip devflow-cli-v0.4.0.zip
+cd devflow-cli-v0.4.0
 pipx install --force .
 dev --version
 ```
@@ -55,7 +62,7 @@ dev --version
 pipx install --force git+https://github.com/felipeflosii/devflow-cli.git
 ```
 
-Os scripts `install.sh` e `install.ps1` fazem essa instalação a partir do GitHub (eles dependem de a versão v0.3.0 já estar publicada). Instalam na conta do usuário, sem `sudo`.
+Os scripts `install.sh` e `install.ps1` fazem essa instalação a partir do GitHub (eles dependem de a versão v0.4.0 já estar publicada). Instalam na conta do usuário, sem `sudo`.
 
 ## Primeira configuração
 
@@ -65,6 +72,7 @@ Execute a CLI **dentro de um repositório clonado do Azure Repos**, por exemplo 
 az login                            # ou configure ADO_PAT sem armazená-lo no repo
 dev init                            # detecta org, projeto e repo a partir do remote origin
 dev doctor                          # verifica Git, autenticação e APIs
+dev main                            # fetch origin --prune + switch main (sem pull)
 dev tasks                           # suas Tasks abertas, com ou sem data
 dev tasks --all                     # todas as Tasks do projeto
 ```
@@ -97,14 +105,15 @@ A configuração fica em `~/.config/devflow/config.json` no Linux/macOS (ou `$XD
 | `dev current`, `dev status` | Consulta trabalho e PR da branch atual |
 | `dev save 'Implementar endpoint'` | Commit + push com `AB#ID` |
 | `dev finish` | Push e cria PR no Azure Repos, sem merge |
-| `dev sync` | `git fetch --prune` sem mudar sua branch |
+| `dev sync` | `git fetch origin --prune` sem mudar sua branch |
+| `dev main` | `git fetch origin --prune` + `git switch main` (sem pull) |
 | `dev new 'Implementar JWT' --assign email@exemplo.com` | Cria Task |
 | `dev plan 8 --date 2026-11-10` | Atribui `devday:2026-11-10` |
 | `dev assign 8 email@exemplo.com` | Altera responsável |
 
 Use `--json` com os comandos de listagem para obter os objetos originais da API Azure DevOps. O campo **PBI** da visualização tabular é resolvido a partir dos relacionamentos de hierarquia do Work Item (não de seu título). Caso não exista um PBI pai ou não haja permissão para consultá-lo, aparece `—`.
 
-**Observação sobre datas:** `Iteration Path` define uma Sprint; isso não equivale a prazo de cada Task. O filtro de data do DevFlow v0.3.0 usa a tag `devday:`; o padrão **não filtra por data**. O campo opcional `Due Date`, se criado no processo do Azure DevOps, não é requisito para listar Tasks.
+**Observação sobre datas:** `Iteration Path` define uma Sprint; isso não equivale a prazo de cada Task. O filtro de data do DevFlow v0.4.0 usa a tag `devday:`; o padrão **não filtra por data**. O campo opcional `Due Date`, se criado no processo do Azure DevOps, não é requisito para listar Tasks.
 
 ## Segurança e limitações
 
