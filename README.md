@@ -1,288 +1,157 @@
-# DevFlow CLI — Azure Boards + Azure Repos + Git
+# DevFlow CLI
 
-**Versão 0.8.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
+**Azure Boards, Azure Repos e Azure Pipelines em um único terminal.**
 
-O DevFlow permite consultar as Tasks do Azure Boards pelo terminal, iniciar branches associadas ao ID da Task e criar commits e Pull Requests rastreáveis no Azure Repos. **O GitHub hospeda o código deste programa; as integrações Git de trabalho são exclusivamente com Azure Repos.**
+[![CI](https://github.com/felipeflosii/devflow-cli/actions/workflows/tests.yml/badge.svg)](https://github.com/felipeflosii/devflow-cli/actions/workflows/tests.yml)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB)](https://www.python.org/)
+[![Version](https://img.shields.io/badge/release-v1.0.0-008080)](https://github.com/felipeflosii/devflow-cli/releases)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-## Novo na v0.8.0 — Dashboard interativo e filtros rápidos
+O **DevFlow CLI v1.0.0** reúne consulta e organização de tarefas, automação de branches/commits/Pull Requests, Sprints, monitoramento de CI/CD e um dashboard interativo em tela cheia. Destina-se a equipes que utilizam **Azure DevOps Services**, com repositórios de código no **Azure Repos**.
 
-O comando `dev dashboard` agora reúne **Tasks, Pull Requests, Sprint atual e saúde de CI/CD** em uma tela única. Ao iniciar em um terminal interativo, abre atalhos por letra; em scripts e CI, apresenta o resumo e encerra sem esperar entrada.
+> **Nota:** o GitHub hospeda e distribui o código-fonte desta ferramenta; o DevFlow opera sobre repositórios *Azure Repos*, não automatiza PRs de repositórios hospedados no GitHub. Projeto comunitário não oficial, sem afiliação com a Microsoft.
 
-```bash
-dev dashboard                                     # painel interativo
-dev dashboard --view summary                     # visão geral, somente leitura
-dev dashboard --view summary --all               # resumo do projeto/equipe
-dev dashboard --view tasks                       # minhas Tasks pendentes
-dev dashboard --view tasks --state "To Do"        # filtrar por estado exato
-dev dashboard --view tasks --all --area "DevOps"  # Tasks do projeto filtradas por área
-dev dashboard --view prs --all                   # PRs ativas do repositório
-dev dashboard --view sprint                      # Sprint e percentual de Tasks concluídas
-dev dashboard --view pipelines                   # pipelines e resultado amostrado
-dev dashboard --view builds --failed             # builds recentes com falha
-dev dashboard --view summary --json              # saída estruturada (sem payload bruto)
-```
+## Destaques da v1.0.0
 
-No menu interativo, digite:
+- **Dashboard TUI** com menu, pesquisa, navegação por setas, painel de detalhes, F5 e atalhos, utilizando [`prompt_toolkit`](https://python-prompt-toolkit.readthedocs.io/).
+- **Atualizador `dev update`** com spinner e barra de **etapas concluídas**: nunca apresenta porcentagem fictícia de download.
+- **Instalação cross-platform** com `pipx`: scripts em Bash para Linux/macOS e PowerShell para Windows.
+- **Compatibilidade com automação**: `dev dashboard --view ... --json` mantém resultados estruturados, sem interações.
+- **Segurança operacional**: evita comandos Git destrutivos e não armazena credenciais do Azure DevOps nos arquivos de configuração.
 
-| Atalho | Ação |
-|---|---|
-| `t` / `a` | Minhas Tasks / Tasks do projeto inteiro |
-| `t state="To Do" area="Infraestrutura"` | Filtro rápido por estado/área; utilize aspas em valores com espaços |
-| `p` | PRs ativas criadas por você |
-| `s` | Sprint atual |
-| `l` | Pipelines |
-| `b` / `f` | Builds recentes / Builds com falha |
-| `w 8` / `pr 12` | Detalhes do Work Item #8 / PR #12 |
-| `start 8` | Pede confirmação e inicia uma Task com o fluxo de branches existente |
-| `r` / `q` | Atualiza o resumo / encerra o painel |
+## Instalação rápida
 
-**Regras:** `--state` e `--area` só são aceitos com `--view tasks`; `--failed` só com `--view builds`. O painel não aprova PRs, não faz merges e não modifica tarefas durante a consulta. `start ID` exige confirmação e mantém as mesmas verificações de autorização e Git de `dev start`. Quando um serviço Azure está indisponível, o resumo identifica essa seção como indisponível, em vez de exibir zero como se fosse um resultado real. Valores de PRs e builds representam amostras limitadas, não um inventário histórico completo.
+Pré-requisitos: **Python 3.10+**, **Git**, **pipx** e uma conta com acesso ao Azure DevOps. Para autenticar, use `az login` (Azure CLI) ou um PAT fornecido pela variável de ambiente `ADO_PAT`.
 
-## Funcionalidade da v0.4.1
-
-- **`dev finish` agora retorna automaticamente à branch principal** após enviar os commits, criar a PR e tentar vinculá-la ao Azure Boards. O retorno executa `git fetch <remote> --prune` e `git switch <base>` (por padrão `origin` e `main`).
-- **A Pull Request continua aberta**, sem merge automático nem alterações no histórico da `main` local.
-- **Falha ao trocar de branch não apaga a PR**: o CLI informa o aviso e orienta a executar `dev main`, sem repetir a criação da Pull Request.
-
-## Recursos da v0.4.0
-
-- **Novo `dev main`**: executa `git fetch origin --prune` e depois `git switch main`, usando os nomes de remote e branch base configurados em `dev init` (origin/main por padrão).
-- Impede a troca de branch quando há modificações locais não salvas. Se a branch principal já existir localmente, utiliza essa branch (sem recriá-la); caso não exista, cria uma branch local rastreando a principal remota.
-- **Sem `pull` automático**: atualizar as referências de `origin/main` não avança a `main` local. Para atualizá-la, execute explicitamente `git pull --ff-only origin main` após `dev main`.
-- `dev sync` continua disponível para somente buscar as referências do remoto, mantendo a branch atual.
-
-## Melhorias da v0.3.0
-
-- `dev tasks` agora lista **todas as suas Tasks abertas**, mesmo sem data planejada. Não é necessário editar Due Date ou planejar tags para que apareçam.
-- `dev tasks --all` lista **todas as Tasks abertas do projeto**, inclusive de outros membros e sem responsável. Exibe coluna **Responsável** abreviada (ex.: `Luiz F.`) e **PBI** pai (`#5`).
-- `dev tasks --mine` equivale à listagem padrão, incluindo as tarefas sem data.
-- `dev tasks --today`, `--week` e `--date AAAA-MM-DD` são filtros opcionais de data, usando a tag `devday:AAAA-MM-DD` (mantida por compatibilidade).
-- `dev tasks --all --area 'Infraestrutura'` filtra por Area Path; `--closed` inclui finalizadas.
-- `dev pbi`, `dev features`, `dev epics` e `dev workitems --all` consultam o backlog por tipo.
-- `dev show <ID>` mostra dados do Work Item e sua hierarquia **Epic → Feature → PBI → Task**.
-- `dev start <ID>`, `dev save` e `dev finish` exigem **Task**; PBIs, Features e Epics não podem iniciar um fluxo de código.
-
-Exemplo de `dev tasks --all` (ilustrativo; dados reais vêm do Azure DevOps):
-
-```text
-Todas as Tasks abertas do projeto
-=================================
-ID  Estado       Planejada  Responsável    PBI  Título
---  -----------  ---------  -------------  ---  ----------------------------------------
-6   To Do        sem data   Luiz F.        #5   Criar script de provisionamento da IA
-7   In Progress  sem data   Maria S.       #5   Criar script de provisionamento do .NET
-8   To Do        sem data   Não atribuído  #5   Validar provisionamento dos App Services
-
-Total: 3 Task(s). Use: dev start <ID> | dev show <ID>
-```
-
-## Instalação e atualização
-
-Requer **Python 3.10+**, Git, `pipx` (recomendado) e, para autenticação no Azure Boards, Azure CLI (`az login`) **ou** um PAT via variável de ambiente. A autenticação do Git (SSH/Git Credential Manager) é independente.
-
-**Linux/macOS (instalação local a partir do ZIP):**
+Instalação recomendada para qualquer sistema, após configurar o `pipx`:
 
 ```bash
-unzip devflow-cli-v0.8.0.zip
-cd devflow-cli-v0.8.0
-pipx install --force .
+pipx install 'git+https://github.com/felipeflosii/devflow-cli.git@v1.0.0'
 dev --version
 ```
 
-**Windows / PowerShell (dentro da pasta descompactada):**
-
-```powershell
-py -m pipx install --force .
-dev --version
-```
-
-**Depois de publicar no GitHub** `felipeflosii/devflow-cli`:
+No **Zorin OS / Ubuntu**, caso ainda não tenha `pipx`:
 
 ```bash
-pipx install --force git+https://github.com/felipeflosii/devflow-cli.git
+sudo apt update
+sudo apt install -y git python3 pipx
+pipx ensurepath
 ```
 
-Os scripts `install.sh` e `install.ps1` fazem a instalação a partir do GitHub (após publicar o código da versão v0.7.0). Instalam na conta do usuário, sem `sudo`.
-
-## Primeira configuração
-
-Execute a CLI **dentro de um repositório clonado do Azure Repos**, por exemplo `zeroviagem-api-java`:
+Para usar os instaladores com barra de progresso, **baixe e revise o arquivo antes de executá-lo**:
 
 ```bash
-az login                            # ou configure ADO_PAT sem armazená-lo no repo
-dev init                            # detecta org, projeto e repo a partir do remote origin
-dev doctor                          # verifica Git, autenticação e APIs
-dev main                            # fetch origin --prune + switch main (sem pull)
-dev tasks                           # suas Tasks abertas, com ou sem data
-dev tasks --all                     # todas as Tasks do projeto
+curl -fsSLo devflow-install.sh https://raw.githubusercontent.com/felipeflosii/devflow-cli/v1.0.0/install.sh
+less devflow-install.sh
+bash devflow-install.sh
 ```
 
-Se a detecção automática falhar:
+No Windows, use `install.ps1` no PowerShell. Veja [instalação detalhada](docs/INSTALACAO.md), incluindo PATH, permissões, autenticação e soluções de problemas.
+
+> Os links de instalação na tag `v1.0.0` somente funcionarão **após** a tag ser publicada no GitHub.
+
+## Configuração inicial
+
+Dentro de um clone **Azure Repos** (não o clone do repositório GitHub do DevFlow):
 
 ```bash
-dev init --org VetSync --project 'GS2 - Azure DevOps' --repo zeroviagem-api-java
+az login
+dev init       # Detecta organização, projeto e repositório a partir de origin
+dev doctor     # Diagnóstico de Git, Azure DevOps e autenticação
+dev tasks      # Tasks abertas atribuídas a você (incluindo sem data)
 ```
 
-A configuração fica em `~/.config/devflow/config.json` no Linux/macOS (ou `$XDG_CONFIG_HOME/devflow/config.json`); no Windows, em `%LOCALAPPDATA%\DevFlow\config.json`. O programa **não salva tokens**.
+Alternativamente:
 
-## Referência de comandos
+```bash
+dev init --org MinhaOrg --project 'Meu Projeto' --repo minha-api --base main --remote origin
+```
 
-| Comando | Resultado |
+A configuração é salva por repositório, sem tokens. Não é necessário repetir `dev init` ao atualizar a ferramenta.
+
+## Fluxo diário
+
+```bash
+dev dashboard          # TUI em tela cheia com pesquisa e detalhes
+dev tasks              # Minhas Tasks pendentes
+dev tasks --all        # Tasks abertas de toda a equipe + responsável + PBI
+dev show 8             # Work Item e cadeia Epic > Feature > PBI > Task
+dev start 8            # Branch feature/8-... vinculada à Task
+dev save 'Implementa validações'  # Commit com AB#8 e push
+dev finish             # Cria PR e retorna à branch base; SEM merge
+dev main --update      # Atualiza branch base apenas se fast-forward
+```
+
+Comandos disponíveis para consultar o projeto:
+
+| Área | Comandos |
 |---|---|
-| `dev tasks` | Suas Tasks abertas, incluindo sem data |
-| `dev tasks --mine` | Mesmo resultado de `dev tasks` |
-| `dev tasks --all` | Todas as Tasks abertas do projeto (coluna Responsável) |
-| `dev tasks --today` | Suas Tasks planejadas para hoje e atrasadas |
-| `dev tasks --week` | Suas Tasks planejadas até domingo e atrasadas |
-| `dev tasks --date 2026-11-10` | Suas Tasks planejadas para uma data exata |
-| `dev tasks --all --closed` | Todas as Tasks, incluindo concluídas |
-| `dev tasks --all --area 'Infraestrutura'` | Tasks abertas na área informada |
-| `dev pbi`, `dev features`, `dev epics` | Backlogs específicos |
-| `dev workitems --all` | Tasks, PBIs, Features, Epics, Bugs e Issues |
-| `dev show 8` | Detalhes e hierarquia do Work Item #8 |
-| `dev dashboard` | Painel interativo de Tasks, PRs, Sprints e Pipelines |
-| `dev start 8` | Inicia/retoma branch para uma Task atribuída a você |
-| `dev current`, `dev status` | Consulta trabalho e PR da branch atual |
-| `dev save 'Implementar endpoint'` | Commit + push com `AB#ID` |
-| `dev finish` | Faz push, cria PR e retorna à principal (fetch --prune + switch, sem merge/pull) |
-| `dev sync` | `git fetch origin --prune` sem mudar sua branch |
-| `dev main` | `git fetch origin --prune` + `git switch main` (sem pull) |
-| `dev new 'Implementar JWT' --assign email@exemplo.com` | Cria Task |
-| `dev plan 8 --date 2026-11-10` | Atribui `devday:2026-11-10` |
-| `dev assign 8 email@exemplo.com` | Altera responsável |
+| Work Items | `dev tasks`, `dev pbi`, `dev features`, `dev epics`, `dev workitems`, `dev show ID` |
+| Gestão | `dev new`, `dev assign`, `dev claim`, `dev plan`, `dev sprint` |
+| Git e PR | `dev start`, `dev save`, `dev finish`, `dev main`, `dev sync`, `dev prs`, `dev pr ID` |
+| CI/CD | `dev pipelines`, `dev builds`, `dev build ID`, `dev runs ID`, `dev run ID ID`, `dev deploys` |
+| Produtividade | `dev dashboard`, `dev doctor`, `dev status`, `dev current`, `dev update` |
 
-Use `--json` com os comandos de listagem para obter os objetos originais da API Azure DevOps. O campo **PBI** da visualização tabular é resolvido a partir dos relacionamentos de hierarquia do Work Item (não de seu título). Caso não exista um PBI pai ou não haja permissão para consultá-lo, aparece `—`.
+Consulte todos os argumentos com `dev <comando> --help`. O [manual completo](docs/MANUAL.md) contém exemplos, limitações e fluxos para cada comando.
 
-**Observação sobre datas:** `Iteration Path` define uma Sprint; isso não equivale a prazo de cada Task. O filtro de data do DevFlow usa a tag `devday:`; o padrão **não filtra por data**. O campo opcional `Due Date`, se criado no processo do Azure DevOps, não é requisito para listar Tasks.
+## Dashboard interativo
 
-## Segurança e limitações
+`dev dashboard` inicia a nova interface TUI quando há terminal interativo. Use **↑ / ↓** para selecionar, **Tab** e **Shift+Tab** para mudar de visão, **/** para pesquisar, **Enter** para detalhes, **F5** para atualizar, **S** para iniciar uma Task com confirmação e **Q** para sair. Digite `?` para abrir a ajuda. O painel oferece oito seções: resumo, minhas Tasks, equipe, PRs, Sprint, pipelines, builds e falhas de CI.
 
-- `dev start` exige uma Task **atribuída ao usuário autenticado**. `--all` pode visualizar Tasks alheias, mas não dá permissão para iniciá-las.
-- Os comandos Git não fazem merge, rebase, `reset --hard` nem `push --force`. `dev finish` cria a PR e volta para a principal, mas **não a aprova**, não faz merge e não conclui a Task.
-- Ao iniciar outra branch, exige árvore de trabalho limpa. Para `dev save`, solicita confirmação antes de `git add -A`, exceto com `--yes`.
-- Bloqueia padrões comuns de arquivos sensíveis (`.env`, `.key`, `.pem`, etc.). Isso não substitui revisão manual nem scanner de segredos.
-- O suporte a estados personalizados do Azure Boards é baseado em nomes conhecidos de estados concluídos; valide adaptações específicas do seu processo.
-- Work Items do projeto são consultados em lotes (até 200 por pedido), com limite padrão da consulta WIQL de até 1.000 IDs por execução.
-- A integração real com sua organização Azure DevOps depende da conectividade e das permissões do seu usuário.
-
-## Testes e contribuição
-
-Na raiz do repositório:
+Para execução em CI, pipes, containers sem TTY ou scripts:
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -v
+dev dashboard --view summary --json
+dev dashboard --view tasks --all --state 'To Do'
+dev dashboard --view builds --failed --json
 ```
 
-No PowerShell:
-
-```powershell
-$env:PYTHONPATH='src'; py -m unittest discover -s tests -v
-```
-
-Todos os testes são locais, sem chamadas reais ao Azure DevOps. Consulte [`CHANGELOG.md`](CHANGELOG.md) para histórico e [`docs/PUBLICAR_NO_GITHUB.md`](docs/PUBLICAR_NO_GITHUB.md) para publicação.
-
-**Licença MIT — Projeto independente, não oficial da Microsoft.**
-
-
-## Novidades da v0.5.0 — Pull Requests e atualização da main
+## Instalar / atualizar com progresso
 
 ```bash
-dev prs                     # PRs ativas do repositório
-dev prs --mine              # PRs que você criou
-dev prs --all               # Inclui concluídas e abandonadas
-dev prs --status completed  # Somente PRs concluídas
-dev pr 12                   # Detalhes da PR: votos de revisores, merge status, Work Items
-dev main --update           # fetch --prune, switch para a base, merge --ff-only origin/main
+dev update --check       # Apenas consulta última release estável do GitHub
+dev update               # Pede confirmação antes de instalar
+dev update --tag v1.0.0 --yes  # Instala uma tag especificada, de modo não interativo
 ```
 
-`dev main --update` **não** faz merge commit, rebase, reset ou push. Se sua `main`
-local divergir do remoto, o fast-forward falha e nenhuma conciliação é forçada.
-A criação da PR e o `dev finish` continuam sem executar merge da PR.
+Durante a instalação, o terminal mostra o avanço das **3 etapas** (release identificada, instalação do pacote, ajuste do PATH), mais uma animação de atividade enquanto o `pipx` trabalha. **Não é uma medição em bytes baixados.** A atualização pode ser feita em qualquer diretório, sem `dev init`.
 
-Para autenticar no Azure Repos, use `az login` com acesso ao Azure DevOps ou
-`ADO_PAT` com permissões de leitura de código (e de Work Items nos comandos que
-consultam Azure Boards). `dev pr` exibe os votos dos revisores, mas não determina
-se todas as políticas de aprovação da branch foram cumpridas.
+## Segurança e limites
 
+- Nunca faça commit de `ADO_PAT` ou de qualquer segredo. Para acesso com Azure CLI, use `az login`; `pipx` não autentica o Git no Azure Repos.
+- `dev finish` **abre uma PR, mas não faz merge, não aprova revisões e não conclui a Task automaticamente**.
+- `dev main --update` faz **somente fast-forward**, se possível, e verifica alterações locais.
+- `dev deploys`, `dev builds` e o dashboard apenas **consultam** informações de CI/CD.
+- Ações que criam ou alteram Work Items precisam das permissões corretas na organização.
+- O teste de integração com um Azure DevOps real depende de credenciais e permissões do usuário; os testes automatizados utilizam mocks.
 
-## Novidades da v0.6.0 — Sprint, atribuição e hierarquia
+Leia [SECURITY.md](SECURITY.md) para divulgação responsável de vulnerabilidades e permissões mínimas recomendadas.
+
+## Documentação do projeto
+
+- [Manual completo dos comandos](docs/MANUAL.md)
+- [Instalação e atualização](docs/INSTALACAO.md)
+- [Arquitetura e decisões técnicas](docs/ARQUITETURA.md)
+- [Perguntas frequentes e diagnóstico](docs/FAQ.md)
+- [Publicação oficial no GitHub](docs/PUBLICAR_NO_GITHUB.md)
+- [Política de segurança](SECURITY.md)
+- [Como contribuir](CONTRIBUTING.md)
+- [Código de conduta](CODE_OF_CONDUCT.md)
+- [Suporte](SUPPORT.md)
+- [Histórico de mudanças](CHANGELOG.md)
+- [Notas da v1.0.0](RELEASE_NOTES.md)
+
+## Desenvolvimento
 
 ```bash
-dev sprint                       # Sprint atual: período, progresso e Tasks com responsáveis
-dev sprint --all                 # Todas as Sprints disponíveis na equipe
-dev sprint --team 'Equipe API'   # Selecione a equipe no Azure Boards
-dev claim 14                     # Assumir uma Task disponível (pede confirmação)
-dev claim 14 --yes               # Confirmação explícita sem prompt
-dev new 'Criar script' --parent 5                        # Task vinculada ao PBI #5
-dev new 'Disponibilizar APIs' --type 'Product Backlog Item' --parent 4
+git clone https://github.com/felipeflosii/devflow-cli.git
+cd devflow-cli
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+python -m unittest discover -s tests -v
 ```
 
-A Sprint deve estar associada à equipe no Azure Boards e ter datas definidas.
-O progresso mostrado é a razão entre **Tasks concluídas e Tasks totais** retornadas
-para a Sprint: não é a estimativa de Story Points nem mede horas reais.
+No PowerShell, ative o virtualenv com `.venv\Scripts\Activate.ps1`.
 
-`dev claim` só atribui Tasks abertas e sem responsável e usa um teste da
-revisão do item para não sobrescrever silenciosamente mudanças concorrentes.
-Por padrão, pede confirmação. `dev new --parent` valida o tipo do pai antes de
-criar e adiciona o vínculo no mesmo pedido de criação do Work Item.
-
-O parâmetro `--team` é opcional; sem ele o Azure DevOps utiliza a equipe padrão
-do projeto. Configurações da v0.4.x/v0.5.x continuam válidas e não precisam ser refeitas.
-
-
-## Novidades da v0.7.0 — Monitoramento de CI/CD
-
-Os novos comandos são **somente leitura**: não executam pipelines, não fazem deploy, não
-aprovam releases e não alteram configurações. Funcionam em repositórios Azure Repos
-configurados anteriormente com `dev init`, sem migração de configuração.
-
-| Comando | Finalidade |
-|---|---|
-| `dev pipelines` | Lista as pipelines do projeto e builds recentes conhecidos |
-| `dev pipelines --limit 20 --sample 100` | Controla o tamanho da consulta |
-| `dev builds` | Lista builds de todas as pipelines, com estado, branch e duração |
-| `dev builds --pipeline 9` | Limita os builds à pipeline de ID 9 |
-| `dev builds --failed` | Exibe builds cujo resultado foi falha |
-| `dev build 81` | Exibe detalhes do build #81, stages e tarefas que falharam |
-| `dev runs 9` | Lista execuções da pipeline #9 |
-| `dev run 9 81` | Exibe detalhes da execução #81 e sua timeline, quando disponível |
-| `dev deploys` | Consulta deploys de Azure YAML Environments **e** Classic Releases |
-| `dev deploys --source yaml` | Consulta somente Azure Environments de pipelines YAML |
-| `dev deploys --source classic` | Consulta somente Classic Release deployments |
-| `dev deploys --environment 'produção'` | Filtra pelo nome do ambiente |
-
-O parâmetro `--json` funciona em todos os comandos acima para automações.
-Os JSONs exibem **campos operacionais resumidos**, sem retornar todas as variáveis,
-segredos ou parâmetros brutos das APIs. **Não mostra conteúdo integral de logs**:
-`dev build` e `dev run` exibem nome, status e mensagens de erro reportadas na
-*timeline* da execução. Mensagens de erro podem conter detalhes operacionais;
-revise antes de compartilhá-las.
-
-### Sobre o escopo dos dados
-
-- **`dev pipelines`:** cruza as pipelines com uma *amostra dos últimos 200 builds*
-  do projeto (ajustável com `--sample`). Se um pipeline aparecer sem último build,
-  isso **não comprova** que nunca foi executado.
-- **`dev runs`:** consulta a API de execuções da pipeline selecionada e exibe até
-  10 por padrão. É possível aumentar com `--limit` até 100.
-- **`dev run`/`dev build`:** a timeline é consultada através da Build API.
-  Quando não estiver disponível (por exemplo, falta de permissão ou execução
-  incompatível), apresenta aviso e mantém os dados principais.
-- **`dev deploys`:** consulta apenas deploys rastreados em *YAML Environments*
-  e *Classic Releases*. Não detecta deployments feitos fora do Azure DevOps,
-  como deploys manuais via Azure CLI. Para limitar consumo de API, a leitura YAML
-  usa até 30 ambientes e os registros recentes de cada um. Use `--environment`
-  para restringir a consulta.
-- **Permissões:** comandos de build/pipeline normalmente exigem acesso de leitura
-  de build (`vso.build`); YAML Environments requer acesso ao ambiente
-  (`vso.environment_manage`) e Classic Releases exige acesso a releases
-  (`vso.release`). A disponibilidade depende de sua conta/organização.
-- Os comandos **não monitoram continuamente** mudanças; cada invocação consulta
-  o estado naquele momento. Não existe agendamento implícito.
-
-Referências oficiais (REST API Azure DevOps 7.1):
-- [Pipelines — List](https://learn.microsoft.com/en-us/rest/api/azure/devops/pipelines/pipelines/list?view=azure-devops-rest-7.1)
-- [Builds — List](https://learn.microsoft.com/en-us/rest/api/azure/devops/build/builds/list?view=azure-devops-rest-7.1)
-- [Build Timeline — Get](https://learn.microsoft.com/en-us/rest/api/azure/devops/build/timeline/get?view=azure-devops-rest-7.1)
-- [Environment deployment records — List](https://learn.microsoft.com/en-us/rest/api/azure/devops/distributedtask/environmentdeployment-records/list?view=azure-devops-rest-7.1)
-- [Classic Release deployments — List](https://learn.microsoft.com/en-us/rest/api/azure/devops/release/deployments/list?view=azure-devops-rest-7.1)
+**Licença MIT.** Desenvolvido de forma independente; leia [LICENSE](LICENSE).

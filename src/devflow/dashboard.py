@@ -1,6 +1,6 @@
-"""Dashboard DevFlow v0.8.0: painel interativo e consultas de leitura.
+"""Dashboard DevFlow v1.0.0: painel interativo e consultas de leitura.
 
-Sem dependências externas e sem modificar Azure DevOps ao navegar.
+Modo de consultas + UI via prompt_toolkit, sem modificar Azure DevOps ao navegar.
 Operações mutáveis (start/claim) exigem comandos explícitos e usam validações da CLI.
 """
 from __future__ import annotations
@@ -188,7 +188,7 @@ def render_view(view: str, data: dict) -> str:
     if view == "summary":
         tasks, prs, sprint, ci = (data.get(k) for k in ("tasks", "pullRequests", "sprint", "ci"))
         is_team = data.get("scope") == "project"
-        lines = ["\nDevFlow 0.8.0 — Dashboard" + (" da equipe" if is_team else ""), "=" * 28,
+        lines = ["\nDevFlow 1.0.0 — Dashboard" + (" da equipe" if is_team else ""), "=" * 28,
                  ("Tasks abertas do projeto: " if is_team else "Minhas Tasks abertas:     ") + (str(tasks["open"]) if tasks else "indisponível"),
                  ("PRs ativas do projeto:   " if is_team else "Minhas PRs ativas:       ") + (str(prs["active"]) + " (amostra até 100)" if prs else "indisponível"),
                  "Sprint atual:           " + (f"{sprint['name']} — {sprint['percent']}% ({sprint['completed']}/{sprint['total']})" if sprint else "indisponível"),
@@ -313,7 +313,13 @@ def execute_dashboard(ado, cfg: dict, args) -> int:
             raise DevError("Use --view com --json, por exemplo: dev dashboard --view summary --json.")
         if args.all or args.area or args.state or args.failed:
             raise DevError("Para usar filtros, indique uma visão: --view tasks ou --view builds.")
-        interactive_dashboard(ado, cfg, team=args.team)
+        # Compatibilidade com pipes/CI e testes que simulam stdin.
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            print(render_view("summary", collect_summary(ado, team=args.team)))
+            print("\nModo não interativo detectado. Use --view tasks ou --view summary --json.")
+            return 0
+        from .tui import launch_dashboard
+        launch_dashboard(ado, cfg, team=args.team)
         return 0
     data = collect_view(ado, view=args.view, all_users=args.all, area=args.area,
                         state=args.state, limit=args.limit, failed=args.failed, team=args.team)

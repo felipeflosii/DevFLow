@@ -47,7 +47,7 @@ def setup_ado():
 
 class DashboardV08Tests(unittest.TestCase):
     def test_version_parser(self):
-        self.assertEqual(__version__, "0.8.0")
+        self.assertEqual(__version__, "1.0.0")
         p = parser_build()
         args = p.parse_args(["dashboard", "--view", "tasks", "--all", "--state", "To Do",
                              "--area", "Infraestrutura", "--limit", "7", "--json"])

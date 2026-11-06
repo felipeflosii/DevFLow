@@ -42,6 +42,11 @@ def parser_build() -> argparse.ArgumentParser:
     s.add_argument("--base", default="main", help="Branch base [main]")
     s.add_argument("--remote", default="origin", help="Remote Git [origin]")
 
+    s = sub.add_parser("update", help="Instalar/atualizar DevFlow com barra de etapas e release oficial")
+    s.add_argument("--check", action="store_true", help="Apenas consultar a última release disponível")
+    s.add_argument("--tag", help="Tag de release (ex.: v1.0.0); padrão: última release estável")
+    s.add_argument("--yes", action="store_true", help="Confirmar atualização automaticamente")
+
     sub.add_parser("config", help="Mostrar configuração deste repositório")
     sub.add_parser("doctor", help="Diagnosticar Git, remoto e autenticação")
     sub.add_parser("sync", help="git fetch origin --prune sem mudar de branch")
@@ -492,6 +497,10 @@ def main(argv: list[str] | None = None) -> int:
 
 def run(argv: list[str] | None = None) -> int:
     args = parser_build().parse_args(argv)
+    # Update é global: não exige estar em um repositório Git ou configurar dev init.
+    if args.action == "update":
+        from .updater import run_update
+        return run_update(check=args.check, tag=args.tag, yes=args.yes)
     root = g.git_root()
     os.chdir(root)
     if args.action == "init":

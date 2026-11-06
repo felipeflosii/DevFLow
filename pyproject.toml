@@ -1,19 +1,40 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "devflow-ado"
-version = "0.8.0"
-description = "CLI para Azure Boards, Azure Repos e Git: tarefas, hierarquia, branches e PRs"
+version = "1.0.0"
+description = "DevFlow CLI: Azure Boards, Azure Repos, CI/CD e dashboard interativo"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{name = "CitizenTech"}]
-dependencies = []
+dependencies = ["prompt_toolkit>=3.0.36,<4"]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Version Control :: Git",
+]
 
 [project.scripts]
 dev = "devflow.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.urls]
+Homepage = "https://github.com/felipeflosii/devflow-cli"
+Documentation = "https://github.com/felipeflosii/devflow-cli/blob/main/docs/MANUAL.md"
+Issues = "https://github.com/felipeflosii/devflow-cli/issues"
+Changelog = "https://github.com/felipeflosii/devflow-cli/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = ["build>=1,<2"]

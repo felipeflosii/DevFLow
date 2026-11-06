@@ -61,7 +61,7 @@ class AzureDevOps:
         url = root + "/" + api_path.lstrip("/") + "?" + urllib.parse.urlencode(values)
         if self._headers is None:
             self._headers = get_auth_headers()
-        headers = {**self._headers, "Accept": "application/json", "User-Agent": "DevFlow/0.8.0"}
+        headers = {**self._headers, "Accept": "application/json", "User-Agent": "DevFlow/1.0.0"}
         data = None
         if body is not None:
             data = json.dumps(body, ensure_ascii=False).encode("utf-8")

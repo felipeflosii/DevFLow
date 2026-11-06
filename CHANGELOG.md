@@ -1,3 +1,26 @@
+# Changelog
+
+Este arquivo registra mudanças relevantes por versão. O DevFlow adota versionamento semântico (SemVer).
+
+## 1.0.0 — 2026-11-06
+
+### Adicionado
+- Dashboard TUI em tela cheia com `prompt_toolkit`, menu de visões, busca, navegação por teclado e painel de detalhes.
+- `dev update`, `--check`, `--tag` e `--yes` para instalação/atualização via pipx e releases GitHub.
+- Barra de etapas + spinner em `dev update`, `install.sh` e `install.ps1` sem representar falsamente bytes baixados.
+- Documentação de lançamento: README, manual completo, instalação, arquitetura, FAQ, SECURITY, CONTRIBUTING, COLLABORATING e CODE_OF_CONDUCT.
+- Templates de issues/PRs e fluxos GitHub Actions para CI e release a partir de tags.
+- Novos testes de regressão da interface e do atualizador.
+
+### Alterado
+- Dependência de runtime: `prompt_toolkit>=3.0.36,<4`.
+- `dev dashboard` abre TUI em um terminal interativo e mantém o modo textual/JSON sem TTY.
+- Instaladores fixados na tag `v1.0.0` para instalações reproduzíveis.
+
+### Mantido
+- Fluxos Azure Boards/Repos/Pipelines, comandos e semântica de Git da v0.8.0.
+- `dev finish` não aprova ou faz merge automático e não fecha a Task.
+
 ## v0.7.0 — Monitoramento de CI/CD (2026-11-06)
 - `dev pipelines`: lista pipelines e cruza os últimos builds conhecidos por ID.
 - `dev builds [--pipeline ID] [--failed]`: consulta builds, estados, duração e branches.
@@ -19,8 +42,6 @@
 - `dev pr ID` mostra estado, merge status, revisores e Work Items associados.
 - `dev main --update` efetua fast-forward seguro da branch base após `fetch --prune`.
 - Nenhuma operação altera políticas de branch ou faz merge automático de PRs.
-
-# Changelog
 
 ## 0.8.0 — 2026-11-06
 
