@@ -22,6 +22,23 @@
 
 # Changelog
 
+## 0.8.0 — 2026-11-06
+
+### Adicionado
+- Novo `dev dashboard` interativo com resumo das Tasks, PRs ativas, Sprint atual e amostra de builds recentes.
+- Atalhos `t`, `a`, `p`, `s`, `l`, `b`, `f`, `w ID`, `pr ID`, `start ID`, `r` e `q`.
+- Filtros rápidos `t state="To Do" area="Infraestrutura"` no menu e `--view tasks --state ... --area ...` no modo direto.
+- Visões `summary`, `tasks`, `prs`, `sprint`, `pipelines` e `builds` em modo de leitura com `--view` e `--json`.
+- `--all` na visão geral, Tasks e PRs, com separação de dados do usuário e do projeto.
+- Saída não interativa automática ao executar em scripts, sem travar esperando respostas.
+- Resumo tolerante a falhas parciais das APIs (valor indisponível + aviso).
+
+### Mantido
+- Sem dependências Python de execução adicionais; funciona em Python 3.10+ nos três sistemas.
+- `dev start`, `dev finish`, `dev main`, gerenciamento de PRs, Sprints e Pipelines existentes.
+- Nenhum novo fluxo faz merge automático, aprova PRs ou executa deploys.
+
+
 ## 0.4.1 — 2026-11-06
 
 ### Alterado

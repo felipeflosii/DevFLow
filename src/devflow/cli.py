@@ -123,7 +123,16 @@ def parser_build() -> argparse.ArgumentParser:
     s = sub.add_parser("show", help="Exibir os detalhes e a hierarquia Epic > Feature > PBI > Task")
     s.add_argument("id", type=int, help="ID de qualquer Work Item")
 
-    sub.add_parser("dashboard", help="Selecionar uma Task em menu interativo")
+    s = sub.add_parser("dashboard", help="Painel interativo: Tasks, PRs, Sprints, Pipelines e atalhos")
+    s.add_argument("--view", choices=("summary", "tasks", "prs", "sprint", "pipelines", "builds"),
+                   help="Exibir uma visão sem iniciar o menu interativo")
+    s.add_argument("--all", action="store_true", help="Exibir Tasks/PRs de toda a equipe (padrão: minhas)")
+    s.add_argument("--state", help="Filtrar Tasks por estado exato (ex.: 'To Do')")
+    s.add_argument("--area", help="Filtrar Tasks por Area Path (correspondência parcial)")
+    s.add_argument("--failed", action="store_true", help="Filtrar builds com falha em --view builds")
+    s.add_argument("--team", help="Equipe usada para consultar Sprint atual")
+    s.add_argument("--limit", type=int, default=20, help="Máximo de registros em uma visão [20, até 200]")
+    s.add_argument("--json", action="store_true", help="JSON resumido (requer --view)")
     s = sub.add_parser("start", help="Criar/retomar branch de Task atribuída a você")
     s.add_argument("id", type=int)
 
@@ -748,23 +757,8 @@ def run(argv: list[str] | None = None) -> int:
         show_item(ado, args.id)
         return 0
     if args.action == "dashboard":
-        class Scope:
-            date = None
-            all = False
-            mine = False
-            week = False
-            today = False
-            closed = False
-            area = None
-        items, mode, day = my_tasks(ado, Scope())
-        print_tasks(items, mode=mode, on_day=day, pbi_ids=load_pbi_ids(ado, items))
-        if items:
-            chosen = input("\nDigite o ID para iniciar (Enter para sair): ").strip()
-            if chosen:
-                if not chosen.isdigit() or int(chosen) not in {int(i["id"]) for i in items}:
-                    raise DevError("Escolha um ID que apareceu na tabela.")
-                do_start(ado, cfg, int(chosen))
-        return 0
+        from .dashboard import execute_dashboard
+        return execute_dashboard(ado, cfg, args)
     if args.action == "start":
         do_start(ado, cfg, args.id)
         return 0

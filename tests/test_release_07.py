@@ -49,7 +49,7 @@ def call_cli(args, ado):
 
 class CiHelperTests(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(__version__, "0.7.0")
+        self.assertEqual(__version__, "0.8.0")
 
     def test_parser(self):
         p = parser_build()

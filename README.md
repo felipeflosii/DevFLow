@@ -1,8 +1,42 @@
 # DevFlow CLI — Azure Boards + Azure Repos + Git
 
-**Versão 0.7.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
+**Versão 0.8.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
 
 O DevFlow permite consultar as Tasks do Azure Boards pelo terminal, iniciar branches associadas ao ID da Task e criar commits e Pull Requests rastreáveis no Azure Repos. **O GitHub hospeda o código deste programa; as integrações Git de trabalho são exclusivamente com Azure Repos.**
+
+## Novo na v0.8.0 — Dashboard interativo e filtros rápidos
+
+O comando `dev dashboard` agora reúne **Tasks, Pull Requests, Sprint atual e saúde de CI/CD** em uma tela única. Ao iniciar em um terminal interativo, abre atalhos por letra; em scripts e CI, apresenta o resumo e encerra sem esperar entrada.
+
+```bash
+dev dashboard                                     # painel interativo
+dev dashboard --view summary                     # visão geral, somente leitura
+dev dashboard --view summary --all               # resumo do projeto/equipe
+dev dashboard --view tasks                       # minhas Tasks pendentes
+dev dashboard --view tasks --state "To Do"        # filtrar por estado exato
+dev dashboard --view tasks --all --area "DevOps"  # Tasks do projeto filtradas por área
+dev dashboard --view prs --all                   # PRs ativas do repositório
+dev dashboard --view sprint                      # Sprint e percentual de Tasks concluídas
+dev dashboard --view pipelines                   # pipelines e resultado amostrado
+dev dashboard --view builds --failed             # builds recentes com falha
+dev dashboard --view summary --json              # saída estruturada (sem payload bruto)
+```
+
+No menu interativo, digite:
+
+| Atalho | Ação |
+|---|---|
+| `t` / `a` | Minhas Tasks / Tasks do projeto inteiro |
+| `t state="To Do" area="Infraestrutura"` | Filtro rápido por estado/área; utilize aspas em valores com espaços |
+| `p` | PRs ativas criadas por você |
+| `s` | Sprint atual |
+| `l` | Pipelines |
+| `b` / `f` | Builds recentes / Builds com falha |
+| `w 8` / `pr 12` | Detalhes do Work Item #8 / PR #12 |
+| `start 8` | Pede confirmação e inicia uma Task com o fluxo de branches existente |
+| `r` / `q` | Atualiza o resumo / encerra o painel |
+
+**Regras:** `--state` e `--area` só são aceitos com `--view tasks`; `--failed` só com `--view builds`. O painel não aprova PRs, não faz merges e não modifica tarefas durante a consulta. `start ID` exige confirmação e mantém as mesmas verificações de autorização e Git de `dev start`. Quando um serviço Azure está indisponível, o resumo identifica essa seção como indisponível, em vez de exibir zero como se fosse um resultado real. Valores de PRs e builds representam amostras limitadas, não um inventário histórico completo.
 
 ## Funcionalidade da v0.4.1
 
@@ -49,8 +83,8 @@ Requer **Python 3.10+**, Git, `pipx` (recomendado) e, para autenticação no Azu
 **Linux/macOS (instalação local a partir do ZIP):**
 
 ```bash
-unzip devflow-cli-v0.7.0.zip
-cd devflow-cli-v0.7.0
+unzip devflow-cli-v0.8.0.zip
+cd devflow-cli-v0.8.0
 pipx install --force .
 dev --version
 ```
@@ -106,7 +140,7 @@ A configuração fica em `~/.config/devflow/config.json` no Linux/macOS (ou `$XD
 | `dev pbi`, `dev features`, `dev epics` | Backlogs específicos |
 | `dev workitems --all` | Tasks, PBIs, Features, Epics, Bugs e Issues |
 | `dev show 8` | Detalhes e hierarquia do Work Item #8 |
-| `dev dashboard` | Menu de suas Tasks abertas |
+| `dev dashboard` | Painel interativo de Tasks, PRs, Sprints e Pipelines |
 | `dev start 8` | Inicia/retoma branch para uma Task atribuída a você |
 | `dev current`, `dev status` | Consulta trabalho e PR da branch atual |
 | `dev save 'Implementar endpoint'` | Commit + push com `AB#ID` |
