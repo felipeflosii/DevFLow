@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 2026-11-06
+
+### Alterado
+- `dev finish` agora executa `git fetch <remote> --prune` e `git switch <base>` automaticamente depois da criação da Pull Request, reutilizando a lógica segura de `dev main`.
+- Em caso de falha na troca da branch, mostra aviso sem perder a informação da PR recém-criada.
+- Não executa pull, merge ou rebase automático nem fecha a Task.
+
 ## 0.4.0 — 2026-11-06
 
 ### Adicionado

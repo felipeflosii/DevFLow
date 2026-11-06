@@ -89,7 +89,7 @@ def parser_build() -> argparse.ArgumentParser:
     s.add_argument("message", help="Mensagem do commit")
     s.add_argument("--yes", action="store_true", help="Confirmar inclusão de todos os arquivos automaticamente")
 
-    s = sub.add_parser("finish", help="Commit pendente, push e criar PR vinculada à Task")
+    s = sub.add_parser("finish", help="Commit, push, criar PR e retornar à branch principal")
     s.add_argument("-m", "--message", help="Mensagem do commit se existirem arquivos alterados")
     s.add_argument("--yes", action="store_true", help="Confirmar inclusão de todos os arquivos automaticamente")
 
@@ -312,6 +312,17 @@ def do_finish(ado: AzureDevOps, cfg: dict, *, message: str | None, yes: bool) ->
     except DevError as exc:
         print(f"AVISO: PR criada, mas vínculo com Boards falhou: {exc}", file=sys.stderr)
     print("A PR ficou aguardando revisão. O comando NÃO faz merge nem ignora políticas da main.")
+    # A PR já foi criada. Uma eventual falha ao voltar para a principal não
+    # desfaz a PR e não deve induzir o usuário a executar 'finish' novamente.
+    try:
+        outcome = g.switch_base(cfg["remote"], cfg["base"])
+    except DevError as exc:
+        print(f"AVISO: PR #{pr_id} foi criada, mas não foi possível voltar para "
+              f"{cfg['base']}: {exc}. Execute 'dev main' quando estiver pronto.",
+              file=sys.stderr)
+    else:
+        print(f"Branch principal {cfg['base']}: {outcome} "
+              "(fetch --prune + switch; sem pull automático).")
 
 
 def main(argv: list[str] | None = None) -> int:

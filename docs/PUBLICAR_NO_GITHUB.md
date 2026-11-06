@@ -1,9 +1,9 @@
-# Publicar DevFlow v0.4.0 no GitHub
+# Publicar DevFlow v0.4.1 no GitHub
 
 O ZIP deste pacote é o **código-fonte completo**, não contém tokens nem a configuração pessoal de `dev init`.
 
 1. Descompacte o ZIP.
-2. Dentro do clone atual de `felipeflosii/devflow-cli`, copie o conteúdo da pasta `devflow-cli-v0.4.0/` por cima dos arquivos existentes. Preserve o diretório `.git/` do repositório (não sobrescreva nem apague).
+2. Dentro do clone atual de `felipeflosii/devflow-cli`, copie o conteúdo da pasta `devflow-cli-v0.4.1/` por cima dos arquivos existentes. Preserve o diretório `.git/` do repositório (não sobrescreva nem apague).
 3. Execute os testes: `PYTHONPATH=src python3 -m unittest discover -s tests -v`.
 4. Confira as diferenças: `git status` e `git diff`.
 5. Publique:
@@ -12,10 +12,10 @@ O ZIP deste pacote é o **código-fonte completo**, não contém tokens nem a co
 git switch main
 git pull --ff-only origin main
 git add .
-git commit -m 'release: DevFlow CLI v0.4.0'
+git commit -m 'release: DevFlow CLI v0.4.1'
 git push origin main
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
 Caso a `main` esteja protegida, crie uma branch e abra uma Pull Request no GitHub antes de criar a tag.

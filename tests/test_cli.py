@@ -1,6 +1,6 @@
 import io
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -22,7 +22,7 @@ def item(i, typ="Task", state="To Do", title="Teste", assigned="Luiz Felipe", pa
 class CliTests(unittest.TestCase):
     def test_version_and_parser(self):
         from devflow import __version__
-        self.assertEqual(__version__, "0.4.0")
+        self.assertEqual(__version__, "0.4.1")
         parsed = parser_build().parse_args(["tasks"])
         self.assertFalse(parsed.all)
         self.assertFalse(parsed.mine)
@@ -44,6 +44,75 @@ class CliTests(unittest.TestCase):
         switch.assert_called_once_with("origin", "main")
         client.assert_not_called()
         self.assertIn("Nenhum pull", output.getvalue())
+
+    def test_finish_returns_to_main_after_creating_pr(self):
+        from devflow.cli import do_finish
+        ado = MagicMock()
+        ado.get_item.return_value = item(7)
+        ado.active_pr.return_value = None
+        ado.create_pr.return_value = {"pullRequestId": 42}
+        ado.pr_web_url.return_value = "https://dev.azure.com/org/proj/pr/42"
+        actions = []
+        def fake_switch(remote, base):
+            actions.append(("switch", remote, base))
+            return "selecionada"
+        def fake_pr(*args):
+            actions.append(("create_pr",) + args)
+            return {"pullRequestId": 42}
+        ado.create_pr.side_effect = fake_pr
+        cfg = {"org":"org", "project":"proj", "repo":"api", "base":"main", "remote":"origin"}
+        buf = io.StringIO()
+        with patch("devflow.cli.config_guard"), \
+             patch("devflow.cli.g.branch", return_value="feature/7-provisionamento-dotnet"), \
+             patch("devflow.cli.g.git", side_effect=lambda *args, **kwargs: "2" if args[:2] == ("rev-list", "--count") else ""), \
+             patch("devflow.cli.g.sync"), \
+             patch("devflow.cli.g.ensure_base"), \
+             patch("devflow.cli.g.switch_base", side_effect=fake_switch), \
+             redirect_stdout(buf):
+            do_finish(ado, cfg, message=None, yes=False)
+        self.assertEqual([a[0] for a in actions], ["create_pr", "switch"])
+        self.assertEqual(actions[-1], ("switch", "origin", "main"))
+        self.assertIn("PR #42 criada", buf.getvalue())
+        self.assertIn("Branch principal main", buf.getvalue())
+        self.assertIn("sem pull", buf.getvalue())
+
+    def test_finish_branch_switch_failure_does_not_erase_created_pr(self):
+        from devflow.cli import do_finish
+        ado = MagicMock()
+        ado.get_item.return_value = item(7)
+        ado.active_pr.return_value = None
+        ado.create_pr.return_value = {"pullRequestId": 42}
+        ado.pr_web_url.return_value = "https://dev.azure.com/org/proj/pr/42"
+        cfg = {"org":"org", "project":"proj", "repo":"api", "base":"main", "remote":"origin"}
+        output, errors = io.StringIO(), io.StringIO()
+        with patch("devflow.cli.config_guard"), \
+             patch("devflow.cli.g.branch", return_value="feature/7-provisionamento-dotnet"), \
+             patch("devflow.cli.g.git", side_effect=lambda *args, **kwargs: "2" if args[:2] == ("rev-list", "--count") else ""), \
+             patch("devflow.cli.g.sync"), \
+             patch("devflow.cli.g.ensure_base"), \
+             patch("devflow.cli.g.switch_base", side_effect=DevError("alterações locais")), \
+             redirect_stdout(output), redirect_stderr(errors):
+            do_finish(ado, cfg, message=None, yes=False)
+        self.assertIn("PR #42 criada", output.getvalue())
+        self.assertIn("PR #42 foi criada", errors.getvalue())
+        self.assertIn("dev main", errors.getvalue())
+
+    def test_finish_does_not_switch_if_pr_not_created(self):
+        from devflow.cli import do_finish
+        ado = MagicMock()
+        ado.get_item.return_value = item(7)
+        ado.active_pr.return_value = None
+        ado.create_pr.side_effect = DevError("falha no Azure DevOps")
+        cfg = {"org":"org", "project":"proj", "repo":"api", "base":"main", "remote":"origin"}
+        with patch("devflow.cli.config_guard"), \
+             patch("devflow.cli.g.branch", return_value="feature/7-provisionamento-dotnet"), \
+             patch("devflow.cli.g.git", side_effect=lambda *args, **kwargs: "2" if args[:2] == ("rev-list", "--count") else ""), \
+             patch("devflow.cli.g.sync"), \
+             patch("devflow.cli.g.ensure_base"), \
+             patch("devflow.cli.g.switch_base") as sw:
+            with self.assertRaisesRegex(DevError, "falha no Azure DevOps"):
+                do_finish(ado, cfg, message=None, yes=False)
+        sw.assert_not_called()
 
     def test_default_is_all_my_open_tasks_even_without_dates(self):
         ado = MagicMock()

@@ -1,10 +1,16 @@
 # DevFlow CLI — Azure Boards + Azure Repos + Git
 
-**Versão 0.4.0** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
+**Versão 0.4.1** — Linux (incluindo Zorin OS), macOS e Windows; Python 3.10+; **sem dependências de execução externas à biblioteca padrão**.
 
 O DevFlow permite consultar as Tasks do Azure Boards pelo terminal, iniciar branches associadas ao ID da Task e criar commits e Pull Requests rastreáveis no Azure Repos. **O GitHub hospeda o código deste programa; as integrações Git de trabalho são exclusivamente com Azure Repos.**
 
-## Novidades da v0.4.0
+## Novidades da v0.4.1
+
+- **`dev finish` agora retorna automaticamente à branch principal** após enviar os commits, criar a PR e tentar vinculá-la ao Azure Boards. O retorno executa `git fetch <remote> --prune` e `git switch <base>` (por padrão `origin` e `main`).
+- **A Pull Request continua aberta**, sem merge automático nem alterações no histórico da `main` local.
+- **Falha ao trocar de branch não apaga a PR**: o CLI informa o aviso e orienta a executar `dev main`, sem repetir a criação da Pull Request.
+
+## Recursos da v0.4.0
 
 - **Novo `dev main`**: executa `git fetch origin --prune` e depois `git switch main`, usando os nomes de remote e branch base configurados em `dev init` (origin/main por padrão).
 - Impede a troca de branch quando há modificações locais não salvas. Se a branch principal já existir localmente, utiliza essa branch (sem recriá-la); caso não exista, cria uma branch local rastreando a principal remota.
@@ -43,8 +49,8 @@ Requer **Python 3.10+**, Git, `pipx` (recomendado) e, para autenticação no Azu
 **Linux/macOS (instalação local a partir do ZIP):**
 
 ```bash
-unzip devflow-cli-v0.4.0.zip
-cd devflow-cli-v0.4.0
+unzip devflow-cli-v0.4.1.zip
+cd devflow-cli-v0.4.1
 pipx install --force .
 dev --version
 ```
@@ -62,7 +68,7 @@ dev --version
 pipx install --force git+https://github.com/felipeflosii/devflow-cli.git
 ```
 
-Os scripts `install.sh` e `install.ps1` fazem essa instalação a partir do GitHub (eles dependem de a versão v0.4.0 já estar publicada). Instalam na conta do usuário, sem `sudo`.
+Os scripts `install.sh` e `install.ps1` fazem a instalação a partir do GitHub (após publicar o código da versão v0.4.1). Instalam na conta do usuário, sem `sudo`.
 
 ## Primeira configuração
 
@@ -104,7 +110,7 @@ A configuração fica em `~/.config/devflow/config.json` no Linux/macOS (ou `$XD
 | `dev start 8` | Inicia/retoma branch para uma Task atribuída a você |
 | `dev current`, `dev status` | Consulta trabalho e PR da branch atual |
 | `dev save 'Implementar endpoint'` | Commit + push com `AB#ID` |
-| `dev finish` | Push e cria PR no Azure Repos, sem merge |
+| `dev finish` | Faz push, cria PR e retorna à principal (fetch --prune + switch, sem merge/pull) |
 | `dev sync` | `git fetch origin --prune` sem mudar sua branch |
 | `dev main` | `git fetch origin --prune` + `git switch main` (sem pull) |
 | `dev new 'Implementar JWT' --assign email@exemplo.com` | Cria Task |
@@ -113,12 +119,12 @@ A configuração fica em `~/.config/devflow/config.json` no Linux/macOS (ou `$XD
 
 Use `--json` com os comandos de listagem para obter os objetos originais da API Azure DevOps. O campo **PBI** da visualização tabular é resolvido a partir dos relacionamentos de hierarquia do Work Item (não de seu título). Caso não exista um PBI pai ou não haja permissão para consultá-lo, aparece `—`.
 
-**Observação sobre datas:** `Iteration Path` define uma Sprint; isso não equivale a prazo de cada Task. O filtro de data do DevFlow v0.4.0 usa a tag `devday:`; o padrão **não filtra por data**. O campo opcional `Due Date`, se criado no processo do Azure DevOps, não é requisito para listar Tasks.
+**Observação sobre datas:** `Iteration Path` define uma Sprint; isso não equivale a prazo de cada Task. O filtro de data do DevFlow usa a tag `devday:`; o padrão **não filtra por data**. O campo opcional `Due Date`, se criado no processo do Azure DevOps, não é requisito para listar Tasks.
 
 ## Segurança e limitações
 
 - `dev start` exige uma Task **atribuída ao usuário autenticado**. `--all` pode visualizar Tasks alheias, mas não dá permissão para iniciá-las.
-- Os comandos Git não fazem merge, rebase, `reset --hard` nem `push --force`. `dev finish` cria a PR mas **não a aprova** nem conclui a Task.
+- Os comandos Git não fazem merge, rebase, `reset --hard` nem `push --force`. `dev finish` cria a PR e volta para a principal, mas **não a aprova**, não faz merge e não conclui a Task.
 - Ao iniciar outra branch, exige árvore de trabalho limpa. Para `dev save`, solicita confirmação antes de `git add -A`, exceto com `--yes`.
 - Bloqueia padrões comuns de arquivos sensíveis (`.env`, `.key`, `.pem`, etc.). Isso não substitui revisão manual nem scanner de segredos.
 - O suporte a estados personalizados do Azure Boards é baseado em nomes conhecidos de estados concluídos; valide adaptações específicas do seu processo.
